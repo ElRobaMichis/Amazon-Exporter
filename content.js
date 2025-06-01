@@ -12,7 +12,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // limpiamos prefijo de patrocinado
     const img    = el.querySelector("img.s-image");
     // Removed sponsored prefix from alt text
-    const rawAlt = img?.alt.replace(/^Anuncio patrocinado:\s*/i, "").trim() || "";
+    const rawAlt = (img?.alt || "")
+      .replace(/^Anuncio patrocinado:\s*/i, "")
+      .trim();
     const description = rawAlt.startsWith(title) && rawAlt !== title
       ? rawAlt.slice(title.length).trim()
       : "No aplica";
