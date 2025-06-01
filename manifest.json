@@ -1,0 +1,29 @@
+{
+    "manifest_version": 3,
+    "name": "Amazon Products Exporter",
+    "version": "1.0",
+    "description": "Exporta nombre, estrellas, reseñas, precio y bayescore de Amazon.",
+    "permissions": ["activeTab", "downloads", "scripting", "tabs", "storage"],
+    "host_permissions": [
+      "*://*.amazon.com.mx/*",
+      "*://*.amazon.com/*",
+      "*://*.amazon.es/*"
+    ],
+    "background": {
+      "service_worker": "background.js"
+    },
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "content_scripts": [
+      {
+        "matches": [
+          "*://*.amazon.com.mx/*",
+          "*://*.amazon.com/*",
+          "*://*.amazon.es/*"
+        ],
+        "js": ["content.js"]
+      }
+    ]
+  }
+  
