@@ -29,8 +29,9 @@ function crawlPage(tabId) {
       );
       return items.map(el => {
         const title     = el.querySelector('h2 span')?.textContent.trim() || '';
-        const img       = el.querySelector('img.s-image');
-        const rawAlt    = img?.alt.replace(/^Anuncio patrocinado:\s*/i, '').trim() || '';
+        const img       = el.querySelector('img.s-image'); // image element
+        // Remove sponsored prefix from the alt text
+        const rawAlt    = (img?.alt || '').replace(/^Anuncio patrocinado:\s*/i, '').trim();
         const description = rawAlt.startsWith(title) && rawAlt !== title
           ? rawAlt.slice(title.length).trim()
           : 'No aplica';
