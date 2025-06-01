@@ -34,8 +34,10 @@ function crawlPage(tabId) {
         const description = rawAlt.startsWith(title) && rawAlt !== title
           ? rawAlt.slice(title.length).trim()
           : 'No aplica';
-        const rating    = el.querySelector('i span.a-icon-alt')
+        let rating    = el.querySelector('i span.a-icon-alt')
                             ?.textContent.trim().split(' ')[0] || '0';
+        // Normalize rating decimal separator
+        rating = rating.replace(',', '.');
         const reviews   = el.querySelector('a[href*="#customerReviews"] span')
                             ?.textContent.replace(/[^\d]/g, '') || '0';
         const price     = el.querySelector('span.a-price span.a-offscreen')
