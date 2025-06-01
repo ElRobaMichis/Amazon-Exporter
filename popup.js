@@ -3,7 +3,7 @@ console.log('[popup] cargado');
 document.getElementById('csv').addEventListener('click', () => exportData('csv'));
 document.getElementById('json').addEventListener('click', () => exportData('json'));
 document.getElementById('exportAll').addEventListener('click', () => {
-  console.log('[popup] clic Exportar TODAS las páginas');
+  console.log('[popup] click Exportar TODAS las páginas');
   chrome.runtime.sendMessage({ action: 'startCrawl' }, resp => {
     console.log('[popup] respuesta de startCrawl callback:', resp);
   });
