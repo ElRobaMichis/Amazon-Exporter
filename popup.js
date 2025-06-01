@@ -25,7 +25,7 @@ function exportData(format) {
 
       bayesUtils.addBayesScore(products);
 
-      // 3) Generamos contenido
+      // 1) Generamos contenido
       let content, filename;
 
       if (format === 'json') {
@@ -36,7 +36,7 @@ function exportData(format) {
         filename = 'amazon_products.csv';
       }
 
-      // 4) Disparamos la descarga (Refactored download logic)
+      // 2) Disparamos la descarga (Refactored download logic)
       const blob = new Blob([content], { type: format==='json'
         ? 'application/json;charset=utf-8'
         : 'text/csv;charset=utf-8'
