@@ -49,7 +49,7 @@ function crawlPage(tabId) {
     }
   }).then(res => {
     if (chrome.runtime.lastError) {
-      console.error('[background] Error executeScript page content:', chrome.runtime.lastError.message);
+      console.error('[background] Error executing page script:', chrome.runtime.lastError.message);
       return;
     }
     if (!res || !res[0] || !res[0].result) {
@@ -69,7 +69,7 @@ function crawlPage(tabId) {
       }
     }).then(nextRes => {
       if (chrome.runtime.lastError) {
-        console.error('[background] Error executeScript next button:', chrome.runtime.lastError.message);
+        console.error('[background] Error executing next button script:', chrome.runtime.lastError.message);
         return;
       }
       if (!nextRes || !nextRes[0]) {
