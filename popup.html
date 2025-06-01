@@ -13,7 +13,11 @@
   <h4>Exportar productos</h4>
   <button id="csv">Exportar CSV</button>
   <button id="json">Exportar JSON</button>
-  <button id="exportAll">Exportar TODAS las páginas</button>
+  <label style="display:block;margin-top:5px;">
+    Páginas a exportar:
+    <input id="pageCount" type="number" min="1" value="1" style="width:100%;box-sizing:border-box;margin-top:3px;" />
+  </label>
+  <button id="exportPages">Exportar páginas</button>
   <script src="utils/bayes.js"></script>
   <script src="utils/csv.js"></script>
   <script src="utils/downloader.js"></script>

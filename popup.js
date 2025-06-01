@@ -2,9 +2,10 @@ console.log('[popup] cargado');
 
 document.getElementById('csv').addEventListener('click', () => exportData('csv'));
 document.getElementById('json').addEventListener('click', () => exportData('json'));
-document.getElementById('exportAll').addEventListener('click', () => {
-  console.log('[popup] click Exportar TODAS las páginas');
-  chrome.runtime.sendMessage({ action: 'startCrawl' }, resp => {
+document.getElementById('exportPages').addEventListener('click', () => {
+  const count = parseInt(document.getElementById('pageCount').value, 10);
+  console.log('[popup] click Exportar páginas, count=', count);
+  chrome.runtime.sendMessage({ action: 'startCrawl', pages: count }, resp => {
     console.log('[popup] respuesta de startCrawl callback:', resp);
   });
   // No window.close() call here.
