@@ -106,8 +106,9 @@ function crawlPage(tabId) {
 function finishAndDownload() {
   console.log('[background] calculando bayescore y generando CSV…');
   const ratings = collected.map(p => parseFloat(p.rating));
+  const counts  = collected.map(p => parseInt(p.reviews,10) || 0);
   const C = ratings.reduce((a,b) => a+b, 0) / (ratings.length||1);
-  const m = 1000;
+  const m = counts.reduce((a,b)=>a+b,0) / (counts.length || 1);
   collected.forEach(p => {
     const R = parseFloat(p.rating), v = parseInt(p.reviews,10);
     p.bayescore = (((v/(v+m))*R + (m/(v+m))*C) || 0).toFixed(3);
