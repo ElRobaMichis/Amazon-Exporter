@@ -16,7 +16,7 @@
   }
 
   function toCsv(products){
-    const bom = '\uFEFF';
+    const bom = '﻿';
     const header = ['title','description','rating','reviews','price','bayescore'];
     const rows = products.map(p => [
       p.title,
