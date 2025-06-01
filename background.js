@@ -3,10 +3,13 @@ importScripts('utils/bayes.js', 'utils/csv.js', 'utils/downloader.js');
 console.log('[background] service worker arrancado');
 
 let collected = [];
+let pagesRemaining = Infinity;
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   console.log('[background] onMessage recibido:', msg);
   if (msg.action === 'startCrawl') {
+    pagesRemaining = parseInt(msg.pages, 10);
+    if (isNaN(pagesRemaining) || pagesRemaining < 1) pagesRemaining = Infinity;
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       const tab = tabs[0];
       if (!tab?.id) return console.error('[background] No se encontró pestaña activa');
@@ -18,7 +21,8 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
 });
 
 function crawlPage(tabId) {
-  console.log('[background] crawlPage en tabId=', tabId);
+  console.log('[background] crawlPage en tabId=', tabId, 'pagesRemaining=', pagesRemaining);
+  if (pagesRemaining !== Infinity) pagesRemaining--;
 
   chrome.scripting.executeScript({
     target: { tabId },
@@ -77,7 +81,7 @@ function crawlPage(tabId) {
         return;
       }
       const nextUrl = nextRes[0].result;
-      if (nextUrl) {
+      if (nextUrl && pagesRemaining > 0) {
         console.log('[background] yendo a siguiente página:', nextUrl);
         chrome.tabs.update(tabId, { url: nextUrl }, () => {
           if (chrome.runtime.lastError) {
@@ -93,7 +97,7 @@ function crawlPage(tabId) {
           chrome.tabs.onUpdated.addListener(listener);
         });
       } else {
-        console.log('[background] no hay más páginas — terminando');
+        console.log('[background] no hay más páginas o límite alcanzado — terminando');
         finishAndDownload();
       }
     }).catch(err => {
