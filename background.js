@@ -1,4 +1,5 @@
 // background.js
+importScripts('utils/bayes.js', 'utils/csv.js', 'utils/downloader.js');
 console.log('[background] service worker arrancado');
 
 let collected = [];
@@ -105,42 +106,9 @@ function crawlPage(tabId) {
 
 function finishAndDownload() {
   console.log('[background] calculando bayescore y generando CSV…');
-  const ratings = collected.map(p => parseFloat(p.rating));
-  const counts  = collected.map(p => parseInt(p.reviews,10) || 0);
-  const C = ratings.reduce((a,b) => a+b, 0) / (ratings.length||1);
-  const m = counts.reduce((a,b)=>a+b,0) / (counts.length || 1);
-  collected.forEach(p => {
-    const R = parseFloat(p.rating), v = parseInt(p.reviews,10);
-    p.bayescore = (((v/(v+m))*R + (m/(v+m))*C) || 0).toFixed(3);
-  });
-
-  const seen = new Set();
-  const unique = collected.filter(p => {
-    const key = [p.title, p.description, p.rating, p.reviews, p.price, p.bayescore].join('|');
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
-  const bom    = '\uFEFF';
-  const header = ['title', 'description', 'rating', 'reviews', 'price', 'bayescore'];
-  const rows   = unique.map(p =>
-    [p.title, p.description, p.rating, p.reviews, p.price, p.bayescore]
-      .map(v => `"${v.replace(/"/g,'""')}"`)
-      .join(',')
-  );
-  const csv = bom + header.join(',') + '\n' + rows.join('\n');
-
-  const dataUrl = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  chrome.downloads.download({
-    url: dataUrl,
-    filename: 'amazon_all_products.csv',
-    saveAs: true
-  }, () => {
-    if (chrome.runtime.lastError) {
-      console.error('[background] Error al descargar:', chrome.runtime.lastError);
-    } else {
-      console.log('[background] descarga iniciada con', unique.length, 'productos únicos');
-    }
-  });
+  bayesUtils.addBayesScore(collected);
+  const unique = csvUtils.deduplicate(collected);
+  const csv = csvUtils.toCsv(unique);
+  downloadUtils.downloadCsv(csv, 'amazon_all_products.csv');
 }
+
