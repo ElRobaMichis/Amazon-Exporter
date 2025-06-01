@@ -17,10 +17,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       ? rawAlt.slice(title.length).trim()
       : "No aplica";
 
-    const ratingEl = el.querySelector("i span.a-icon-alt");
-    const rating   = ratingEl
-      ? ratingEl.textContent.trim().split(" ")[0]
-      : "0";
+  const ratingEl = el.querySelector("i span.a-icon-alt");
+  let rating     = ratingEl
+    ? ratingEl.textContent.trim().split(" ")[0]
+    : "0";
+  // Convert decimal comma to dot for consistent parsing later
+  rating = rating.replace(',', '.');
 
     const revSpan = el.querySelector('a[href*="#customerReviews"] span');
     const reviews = revSpan
