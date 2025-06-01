@@ -23,10 +23,11 @@ function exportData(format) {
       const products = response?.products || [];
       if (!products.length) return alert('No hay productos.');
 
-      // 1) Calculamos la media C y m=1000
+      // 1) Calculamos la media C y m dinámico
       const ratings = products.map(p => parseFloat(p.rating));
+      const counts  = products.map(p => parseInt(p.reviews,10) || 0);
       const C = ratings.reduce((a,b) => a+b, 0) / (ratings.length||1);
-      const m = 1000;
+      const m = counts.reduce((a,b)=>a+b,0) / (counts.length || 1);
 
       // 2) Añadimos bayescore a cada producto
       products.forEach(p => {
