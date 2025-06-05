@@ -1,5 +1,6 @@
 // Tests for content.js functionality
 const { JSDOM } = require('jsdom');
+const ProductExtractor = require('../utils/productExtractor');
 
 // Mock Chrome API
 global.chrome = {
@@ -17,9 +18,8 @@ function createMockDOM(html) {
   global.window = dom.window;
 }
 
-// Extract functions from content.js for testing
+// Extract functions for testing
 function setupContentScript() {
-  // These functions are copied from content.js for testing
   const calcBayesParams = (products) => {
     const ratings = products.map(p => parseFloat(p.rating) || 0);
     const counts = products.map(p => parseInt(p.reviews, 10) || 0);
@@ -34,100 +34,12 @@ function setupContentScript() {
     return ((v / (v + m)) * R + (m / (v + m)) * C).toFixed(3);
   };
 
-  const isValidProductName = (name) => {
-    if (!name || name.length < 10) return false;
-    
-    if (/^[$€£¥₹]\s*[\d,]+/.test(name) || /^\d+[.,]\d+$/.test(name)) return false;
-    
-    const excludePatterns = [
-      /^(add to cart|añadir al carrito|agregar al carrito)/i,
-      /^(buy now|comprar ahora)/i,
-      /^(next page|página siguiente|siguiente)/i,
-      /^(previous page|página anterior|anterior)/i,
-      /^(see more|ver más)/i,
-      /^(show results|mostrar resultados)/i,
-      /^(sort by|ordenar por)/i,
-      /^(filter by|filtrar por)/i,
-      /^(back to top|volver arriba)/i,
-      /^(go to page|ir a la página)/i,
-      /^página \d+/i,
-      /^page \d+/i,
-      /^(visit the|visita la tienda)/i,
-      /^(hello|hola)/i,
-      /^(sign in|iniciar sesión)/i,
-      /^(create account|crear cuenta)/i,
-      /^(shop at the store|compra en la store)/i,
-      /^(visit the store|visita la tienda)/i,
-      /^(customer reviews|opiniones de clientes)/i,
-      /^\d+\.?\d* out of \d+ stars/i,
-      /^\d+\.?\d* de \d+ estrellas/i,
-      /^estrellas/i,
-      /^stars/i,
-      /^(free shipping|envío gratis)/i,
-      /^(prime|amazon prime)/i,
-      /^(sponsored|patrocinado|publicidad|promoted)/i,
-      /^(best seller|más vendido)/i,
-      /^(amazon's choice|amazon choice)/i,
-      /^(limited time deal|oferta por tiempo limitado)/i,
-      /^(lightning deal|oferta relámpago)/i,
-      /^(subscribe & save|suscríbete y ahorra)/i,
-      /^(prime eligible|elegible para prime)/i,
-      /^precio/i,
-      /^price/i,
-      /lista:/i,
-      /^el precio era/i,
-      /^the price was/i,
-      /búsquedas relacionadas/i,
-      /related searches/i,
-      /más resultados/i,
-      /more results/i,
-      /^recomendado/i,
-      /^recommended/i,
-      /tu historial/i,
-      /your history/i,
-      /ver opciones/i,
-      /see options/i,
-      /necesitas ayuda/i,
-      /need help/i,
-      /métodos/i,
-      /methods/i,
-      /información de/i,
-      /information/i,
-      /^de [^"]+\"?\./i,
-      /^from [^"]+\"?\./i
-    ];
-    
-    return !excludePatterns.some(pattern => pattern.test(name));
-  };
-
-  const cleanProductName = (name) => {
-    if (!name) return '';
-    
-    name = name.replace(/^(Anuncio\s+)?patrocinado\s*[-:]?\s*/i, '');
-    name = name.replace(/^Sponsored\s*[-:]?\s*/i, '');
-    name = name.replace(/^Publicidad\s*[-:]?\s*/i, '');
-    name = name.replace(/^Promoted\s*[-:]?\s*/i, '');
-    name = name.replace(/\s*[-:]?\s*(Sponsored|Patrocinado|Publicidad|Promoted)$/gi, '');
-    name = name.replace(/\s*:\s*Amazon\.(com\.?)?\w+\s*:\s*\w+$/i, '');
-    name = name.replace(/^[\[\]()]+/, '');
-    name = name.replace(/\.{3,}$/, '');
-    name = name.replace(/\s*\[[^\]]+\]\s*$/g, '');
-    name = name.replace(/\s+/g, ' ').trim();
-    
-    // Fix capitalization for ALL CAPS words at the beginning
-    name = name.replace(/^([A-Z]{2,})(\s+)/, (match, word, space) => {
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() + space;
-    });
-    
-    return name;
-  };
-
-
   return {
     calcBayesParams,
     calculateBayesScore,
-    isValidProductName,
-    cleanProductName
+    // Use shared utility functions
+    isValidProductName: ProductExtractor.isValidProductName,
+    cleanProductName: ProductExtractor.cleanProductName
   };
 }
 
