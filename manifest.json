@@ -22,7 +22,7 @@
           "*://*.amazon.com/*",
           "*://*.amazon.es/*"
         ],
-        "js": ["content.js"]
+        "js": ["utils/productExtractor.js", "content.js"]
       }
     ]
   }

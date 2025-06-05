@@ -1,14 +1,30 @@
-console.log('[popup] cargado');
-
 document.getElementById('csv').addEventListener('click', () => exportData('csv'));
 document.getElementById('json').addEventListener('click', () => exportData('json'));
 document.getElementById('exportPages').addEventListener('click', () => {
+  console.log('[Popup] Export pages button clicked');
+  
   const count = parseInt(document.getElementById('pageCount').value, 10);
-  console.log('[popup] click Exportar páginas, count=', count);
-  chrome.runtime.sendMessage({ action: 'startCrawl', pages: count }, resp => {
-    console.log('[popup] respuesta de startCrawl callback:', resp);
+  console.log(`[Popup] Page count: ${count}`);
+  
+  const message = { action: 'startCrawl', pages: count };
+  console.log('[Popup] Sending message to background:', message);
+  
+  chrome.runtime.sendMessage(message, resp => {
+    console.log('[Popup] Received response from background:', resp);
+    
+    if (chrome.runtime.lastError) {
+      console.error('[Popup] Runtime error:', chrome.runtime.lastError);
+      alert('Error: Background script not responding. Try reloading the extension.');
+      return;
+    }
+    
+    if (resp && resp.error) {
+      console.error('[Popup] Background error:', resp.error);
+      alert(`Error: ${resp.error}`);
+    } else if (resp && resp.success) {
+      console.log('[Popup] Crawl started successfully');
+    }
   });
-  // No window.close() call here.
 });
 
 function exportData(format) {
@@ -18,7 +34,6 @@ function exportData(format) {
 
     chrome.tabs.sendMessage(tabId, { action: 'export' }, response => {
       if (chrome.runtime.lastError) {
-        console.error(chrome.runtime.lastError.message);
         return alert('Error contacting content script.');
       }
       const products = response?.products || [];

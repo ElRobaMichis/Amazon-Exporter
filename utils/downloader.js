@@ -36,5 +36,15 @@
     downloadBlob(blob, filename);
   }
 
-  return { downloadBlob, downloadCsv };
+  function downloadHtml(html, filename){
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    downloadBlob(blob, filename);
+  }
+
+  function downloadExcel(excel, filename){
+    const blob = new Blob([excel], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    downloadBlob(blob, filename);
+  }
+
+  return { downloadBlob, downloadCsv, downloadHtml, downloadExcel };
 }));
