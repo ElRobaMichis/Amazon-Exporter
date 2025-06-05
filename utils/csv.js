@@ -8,7 +8,7 @@
   function deduplicate(products){
     const seen = new Set();
     return products.filter(p => {
-      const key = [p.title,p.description,p.rating,p.reviews,p.price,p.bayescore].join('|');
+      const key = [p.title,p.rating,p.reviews,p.price,p.bayescore].join('|');
       if(seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -17,10 +17,9 @@
 
   function toCsv(products){
     const bom = '﻿';
-    const header = ['title','description','rating','reviews','price','bayescore'];
+    const header = ['Name','Rating','Reviews','Price','Bayescore'];
     const rows = products.map(p => [
       p.title,
-      p.description,
       p.rating,
       p.reviews,
       p.price,

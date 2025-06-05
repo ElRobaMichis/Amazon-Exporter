@@ -1,0 +1,117 @@
+(function() {
+    let productNames = new Set();
+    
+    function isValidProduct(text) {
+        if (!text || text.length < 10) return false;
+        if (text.match(/^[\$€£¥₹]\s*[\d,]+/) || text.match(/^\d+[\.,]\d+$/)) return false;
+        
+        const uiElements = [
+            /^precio/i, /^price/i, /lista:/i, /anterior:/i, /^siguiente/i, /^previous/i,
+            /^next/i, /búsquedas relacionadas/i, /related searches/i, /más resultados/i,
+            /more results/i, /ver opciones/i, /see options/i, /agregar al carrito/i,
+            /add to cart/i, /^página \d+/i, /^page \d+/i, /necesitas ayuda/i,
+            /need help/i, /estrellas/i, /stars/i, /recomendado/i, /recommended/i,
+            /tu historial/i, /your history/i, /métodos/i, /methods/i, /información de/i,
+            /information/i, /^\d+\.\d+ de \d+ estrellas/, /^\d+\.\d+ out of \d+ stars/,
+            /^de [^"]+"?\./i, /^from [^"]+"?\./i, /compra en la store/i,
+            /shop at the store/i, /visita la tienda/i, /visit the store/i,
+            /ir a la página/i, /go to page/i, /oferta relámpago/i, /lightning deal/i,
+            /elegible para prime/i, /prime eligible/i, /el precio era/i, /the price was/i
+        ];
+        
+        return !uiElements.some(pattern => pattern.test(text));
+    }
+    
+    function cleanProductName(text) {
+        if (!text) return null;
+        text = text.replace(/^(Anuncio\s+)?patrocinado\s*[-:]?\s*/i, '');
+        text = text.replace(/^Sponsored\s*[-:]?\s*/i, '');
+        text = text.replace(/^Publicidad\s*[-:]?\s*/i, '');
+        text = text.replace(/^Promoted\s*[-:]?\s*/i, '');
+        text = text.replace(/\s*:\s*Amazon\.(com\.)?\w+\s*:\s*\w+$/i, '');
+        text = text.replace(/^[\[\]()]+/, '');
+        text = text.replace(/\s+/g, ' ').trim();
+        text = text.replace(/\.{3,}$/, '');
+        return text;
+    }
+    
+    function extractProducts() {
+        const searchResults = document.querySelectorAll('[data-component-type="s-search-result"]');
+        
+        searchResults.forEach(result => {
+            const h2Elements = result.querySelectorAll('h2');
+            h2Elements.forEach(h2 => {
+                const link = h2.querySelector('a');
+                let productName = link ? 
+                    (link.getAttribute('title') || link.getAttribute('aria-label') || link.textContent.trim()) : 
+                    h2.textContent.trim();
+                
+                productName = cleanProductName(productName);
+                if (productName && isValidProduct(productName)) {
+                    productNames.add(productName);
+                }
+            });
+        });
+        
+        const asinElements = document.querySelectorAll('[data-asin]:not([data-asin=""])');
+        asinElements.forEach(element => {
+            if (element.hasAttribute('data-component-type')) return;
+            const h2 = element.querySelector('h2');
+            if (h2) {
+                const link = h2.querySelector('a');
+                let productName = link ? 
+                    (link.getAttribute('title') || link.textContent.trim()) : 
+                    h2.textContent.trim();
+                
+                productName = cleanProductName(productName);
+                if (productName && isValidProduct(productName)) {
+                    productNames.add(productName);
+                }
+            }
+        });
+        
+        const productImages = document.querySelectorAll('[data-component-type="s-search-result"] img[alt], [data-asin] img[alt]');
+        productImages.forEach(img => {
+            const alt = cleanProductName(img.getAttribute('alt'));
+            if (alt && isValidProduct(alt) && !productNames.has(alt)) {
+                const isDuplicate = Array.from(productNames).some(existing => {
+                    const shortExisting = existing.substring(0, 30);
+                    const shortAlt = alt.substring(0, 30);
+                    return existing.includes(shortAlt) || alt.includes(shortExisting);
+                });
+                
+                if (!isDuplicate) {
+                    productNames.add(alt);
+                }
+            }
+        });
+    }
+    
+    function formatProductName(name) {
+        if (name.match(/^"[^"]+" - /)) return name;
+        
+        const brandPatterns = [
+            /^([A-Za-z0-9][A-Za-z0-9\s'&\.\-®™]+?)\s*[:–-]\s*(.+)$/,
+            /^([A-Z]{2,}(?:\s+[A-Z]+)*)\s+(.+)$/,
+            /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+[-–]\s+(.+)$/,
+            /^[""]([^"""]+)[""]\s*[-–:]\s*(.+)$/
+        ];
+        
+        for (let pattern of brandPatterns) {
+            const match = name.match(pattern);
+            if (match) {
+                let brand = match[1].trim().replace(/\s*[:–-]\s*$/, '');
+                let product = match[2].trim();
+                
+                if (brand.length >= 2 && brand.length <= 30 && !brand.match(/^\d+$/) && 
+                    !product.toLowerCase().startsWith(brand.toLowerCase())) {
+                    return `"${brand}" - ${product}`.replace(/ - - /g, ' - ');
+                }
+            }
+        }
+        return name;
+    }
+    
+    extractProducts();
+    return Array.from(productNames).map(formatProductName).sort();
+})();
