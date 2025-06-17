@@ -197,10 +197,23 @@ const ProductExtractor = {
     let reviews = "0";
     if (reviewsEl) {
       const reviewsText = reviewsEl.textContent || reviewsEl.getAttribute('aria-label') || '';
-      // Extract just the number
-      const reviewsMatch = reviewsText.match(/[\d,]+/);
+      // Extract number with k/K multiplier support
+      const reviewsMatch = reviewsText.match(/([\d.,]+)\s*[kK]?/);
       if (reviewsMatch) {
-        reviews = reviewsMatch[0].replace(/,/g, '');
+        let numStr = reviewsMatch[1];
+        
+        // Handle different decimal separators: if there's a k/K, treat comma as decimal
+        if (/[kK]/.test(reviewsText)) {
+          // For k format: "1,2k" means 1.2k = 1200, "1.2k" means 1.2k = 1200  
+          numStr = numStr.replace(',', '.');
+          let numValue = parseFloat(numStr);
+          numValue = Math.round(numValue * 1000);
+          reviews = numValue.toString();
+        } else {
+          // For regular numbers: "1,234" means 1234 (comma as thousands separator)
+          numStr = numStr.replace(/,/g, '');
+          reviews = numStr;
+        }
       }
     }
 

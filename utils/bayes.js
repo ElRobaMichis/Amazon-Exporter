@@ -23,6 +23,16 @@
     return products;
   }
 
+  function addBayesScoreWithParams(products, params){
+    const {C, m} = params;
+    products.forEach(p => {
+      const R = parseFloat(p.rating) || 0;
+      const v = parseInt(p.reviews, 10) || 0;
+      p.bayescore = (((v/(v+m))*R + (m/(v+m))*C) || 0).toFixed(3);
+    });
+    return products;
+  }
+
   function calculateBayesScores(products){
     const {C,m} = calcParams(products);
     return products.map(p => {
@@ -32,5 +42,5 @@
     });
   }
 
-  return { addBayesScore, calculateBayesScores };
+  return { addBayesScore, addBayesScoreWithParams, calculateBayesScores, calcParams };
 }));

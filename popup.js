@@ -1,9 +1,41 @@
+// Initialize popup when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  // Request max pages from content script
+  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+    const tabId = tabs[0]?.id;
+    if (!tabId) return;
+    
+    chrome.tabs.sendMessage(tabId, { action: 'detectMaxPages' }, response => {
+      if (!chrome.runtime.lastError && response?.maxPages && response.maxPages > 1) {
+        const pageCountInput = document.getElementById('pageCount');
+        const pageCountHelp = document.getElementById('pageCountHelp');
+        
+        pageCountInput.value = response.maxPages;
+        pageCountInput.max = response.maxPages;
+        
+        // Show helpful text
+        pageCountHelp.textContent = `Se detectaron ${response.maxPages} páginas disponibles`;
+        pageCountHelp.style.display = 'block';
+      }
+    });
+  });
+});
+
 document.getElementById('csv').addEventListener('click', () => exportData('csv'));
 document.getElementById('json').addEventListener('click', () => exportData('json'));
 document.getElementById('exportPages').addEventListener('click', () => {
   console.log('[Popup] Export pages button clicked');
   
-  const count = parseInt(document.getElementById('pageCount').value, 10);
+  const pageCountInput = document.getElementById('pageCount');
+  let count = parseInt(pageCountInput.value, 10);
+  const max = parseInt(pageCountInput.max, 10);
+  
+  // Ensure count doesn't exceed max if max is set
+  if (max && count > max) {
+    count = max;
+    pageCountInput.value = max;
+  }
+  
   console.log(`[Popup] Page count: ${count}`);
   
   const message = { action: 'startCrawl', pages: count };
@@ -23,6 +55,8 @@ document.getElementById('exportPages').addEventListener('click', () => {
       alert(`Error: ${resp.error}`);
     } else if (resp && resp.success) {
       console.log('[Popup] Crawl started successfully');
+      // Close popup to let background script work
+      window.close();
     }
   });
 });

@@ -116,7 +116,14 @@ function crawlPage(tabId) {
           });
           
           console.log(`[Content] After additional filtering: ${filtered.length} products (removed ${products.length - filtered.length} sponsored/invalid)`);
-          return filtered;
+          
+          // Normalize product format for consistency with content.js format
+          return filtered.map(product => ({
+            title: product.title,
+            rating: product.rating,
+            reviews: product.reviews, 
+            price: product.price
+          }));
         } else {
           console.error('[Content] ProductExtractor not available');
           return [];
@@ -221,15 +228,26 @@ function finishAndDownload() {
   console.log(`[Background] Finishing crawl. Total products collected: ${collected.length}`);
   
   try {
-    bayesUtils.addBayesScore(collected);
-    const unique = csvUtils.deduplicate(collected);
-    console.log(`[Background] After deduplication: ${unique.length} unique products`);
+    if (collected.length === 0) {
+      console.log('[Background] No products collected');
+      return;
+    }
     
-    const csv = csvUtils.toCsv(unique);
-    downloadUtils.downloadCsv(csv, 'amazon_all_products.csv');
-    console.log('[Background] Download initiated successfully');
+    // Store extracted products in chrome.storage for the Bayesian selection page
+    chrome.storage.local.set({ extractedProducts: collected }, () => {
+      console.log('[Background] Products stored, opening Bayesian selection page');
+      
+      // Open the Bayesian selection page
+      chrome.tabs.create({
+        url: chrome.runtime.getURL('bayes_selection.html'),
+        active: true
+      }, (tab) => {
+        console.log(`[Background] Bayesian selection page opened in tab ${tab.id}`);
+      });
+    });
+    
   } catch (error) {
-    console.error('[Background] Error during download process:', error);
+    console.error('[Background] Error during finish process:', error);
   }
 }
 
