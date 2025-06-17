@@ -3,21 +3,123 @@
 <head>
   <meta charset="utf-8" />
   <style>
-    body { font-family: sans-serif; width: 200px; padding: 10px; }
-    h4 { margin: 0 0 10px; }
-    button { width: 100%; margin-top: 5px; padding: 8px; cursor: pointer; }
+    body { 
+      font-family: sans-serif; 
+      width: 280px; 
+      padding: 0;
+      margin: 0;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 0 0 8px 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h3 { 
+      margin: 0 0 20px; 
+      color: #333;
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    .export-section {
+      margin-bottom: 20px;
+    }
+    .export-section h4 {
+      margin: 0 0 12px;
+      color: #495057;
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    button { 
+      flex: 1;
+      padding: 12px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    .export-btn {
+      background: #007bff;
+      color: white;
+    }
+    .export-btn:hover {
+      background: #0056b3;
+    }
+    .multi-page-section {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      border-left: 4px solid #28a745;
+    }
+    .multi-page-section h4 {
+      color: #28a745;
+      margin-bottom: 12px;
+    }
+    .input-group {
+      margin-bottom: 12px;
+    }
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 12px;
+      color: #6c757d;
+      font-weight: bold;
+    }
+    .input-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ced4da;
+      border-radius: 3px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    .input-group input:focus {
+      outline: none;
+      border-color: #007bff;
+      box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+    }
+    #exportPages {
+      background: #28a745;
+      color: white;
+      width: 100%;
+    }
+    #exportPages:hover {
+      background: #218838;
+    }
   </style>
-  <title>Exportar Amazon</title>
+  <title>Amazon Products Exporter</title>
 </head>
 <body>
-  <h4>Exportar productos</h4>
-  <button id="csv">Exportar CSV</button>
-  <button id="json">Exportar JSON</button>
-  <label style="display:block;margin-top:5px;">
-    Páginas a exportar:
-    <input id="pageCount" type="number" min="1" value="1" style="width:100%;box-sizing:border-box;margin-top:3px;" />
-  </label>
-  <button id="exportPages">Exportar páginas</button>
+  <div class="container">
+    <h3>Amazon Products Exporter</h3>
+    
+    <div class="export-section">
+      <h4>Exportar página actual</h4>
+      <div class="button-group">
+        <button id="csv" class="export-btn">Exportar CSV</button>
+        <button id="json" class="export-btn">Exportar JSON</button>
+      </div>
+    </div>
+    
+    <div class="multi-page-section">
+      <h4>Exportar múltiples páginas</h4>
+      <div class="input-group">
+        <label for="pageCount">Número de páginas a exportar:</label>
+        <input id="pageCount" type="number" min="1" value="1">
+        <small id="pageCountHelp" style="display: none; color: #6c757d; font-size: 11px; margin-top: 3px;"></small>
+      </div>
+      <button id="exportPages">Exportar páginas</button>
+    </div>
+  </div>
   <script src="utils/bayes.js"></script>
   <script src="utils/csv.js"></script>
   <script src="utils/downloader.js"></script>

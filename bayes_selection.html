@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { 
+      font-family: sans-serif; 
+      width: 400px; 
+      padding: 20px; 
+      margin: 0 auto;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h3 { 
+      margin: 0 0 15px; 
+      color: #333;
+      text-align: center;
+    }
+    .stats {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      border-left: 4px solid #007bff;
+    }
+    .stats h4 {
+      margin: 0 0 10px;
+      color: #495057;
+    }
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .stat-label {
+      font-weight: bold;
+      color: #6c757d;
+    }
+    .stat-value {
+      color: #212529;
+      font-family: monospace;
+    }
+    .option-group {
+      margin-bottom: 15px;
+    }
+    label { 
+      display: block; 
+      margin-bottom: 12px; 
+      padding: 10px;
+      border: 2px solid #e9ecef;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    label:hover {
+      border-color: #007bff;
+      background: #f8f9fa;
+    }
+    label.selected {
+      border-color: #007bff;
+      background: #e3f2fd;
+    }
+    input[type="radio"] {
+      margin-right: 8px;
+    }
+    .custom-inputs {
+      margin-left: 25px;
+      margin-top: 10px;
+      display: none;
+    }
+    .custom-inputs label {
+      border: none;
+      padding: 5px 0;
+      margin-bottom: 5px;
+      font-size: 12px;
+      background: none;
+    }
+    .custom-inputs input[type="number"] {
+      width: 80px;
+      padding: 4px;
+      border: 1px solid #ced4da;
+      border-radius: 3px;
+    }
+    button { 
+      width: 100%; 
+      padding: 12px; 
+      margin-top: 10px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    #applyBayes {
+      background: #28a745;
+      color: white;
+    }
+    #applyBayes:hover {
+      background: #218838;
+    }
+    #cancelBayes {
+      background: #6c757d;
+      color: white;
+      margin-top: 5px;
+    }
+    #cancelBayes:hover {
+      background: #5a6268;
+    }
+    .description {
+      font-size: 12px;
+      color: #6c757d;
+      margin-top: 5px;
+      font-style: italic;
+    }
+  </style>
+  <title>Configurar Bayescore</title>
+</head>
+<body>
+  <div class="container">
+    <h3>Configurar Bayescore</h3>
+    
+    <div class="stats">
+      <h4>Estadísticas de productos extraídos:</h4>
+      <div class="stat-row">
+        <span class="stat-label">Total de productos:</span>
+        <span class="stat-value" id="totalProducts">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Reviews mínimas:</span>
+        <span class="stat-value" id="minReviews">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Reviews promedio:</span>
+        <span class="stat-value" id="avgReviews">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Reviews máximas:</span>
+        <span class="stat-value" id="maxReviews">-</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Rating promedio:</span>
+        <span class="stat-value" id="avgRating">-</span>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <label>
+        <input type="radio" name="bayesMethod" value="average" checked> 
+        <strong>Promedio (automático)</strong>
+        <div class="description">Usa el promedio calculado de ratings y reviews (comportamiento original)</div>
+      </label>
+      
+      <label>
+        <input type="radio" name="bayesMethod" value="min"> 
+        <strong>Mínimo conservador</strong>
+        <div class="description">Usa valores mínimos para una evaluación más estricta</div>
+      </label>
+      
+      <label>
+        <input type="radio" name="bayesMethod" value="high"> 
+        <strong>Alto optimista</strong>
+        <div class="description">Usa valores altos para una evaluación más generosa</div>
+      </label>
+      
+      <label>
+        <input type="radio" name="bayesMethod" value="custom"> 
+        <strong>Personalizado</strong>
+        <div class="description">Define tus propios parámetros de evaluación</div>
+      </label>
+      
+      <div id="customBayesInputs" class="custom-inputs">
+        <label>
+          Rating base (C): <input type="number" id="customC" min="0" max="5" step="0.1" value="3.0">
+        </label>
+        <label>
+          Reviews base (m): <input type="number" id="customM" min="0" step="1" value="100">
+        </label>
+      </div>
+    </div>
+
+    <button id="applyBayes">Aplicar y Exportar CSV</button>
+    <button id="cancelBayes">Cancelar</button>
+  </div>
+
+  <script src="utils/bayes.js"></script>
+  <script src="utils/csv.js"></script>
+  <script src="utils/downloader.js"></script>
+  <script src="bayes_selection.js"></script>
+</body>
+</html>
