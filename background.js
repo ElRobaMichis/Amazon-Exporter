@@ -16,6 +16,9 @@ scriptsToImport.forEach(script => {
 let collected = [];
 let pagesRemaining = Infinity;
 let isDownloading = false;
+let totalPagesToExport = 0;
+let currentPageNumber = 0;
+let isCancelled = false;
 
 console.log('[Background] Background script initialized');
 
@@ -31,6 +34,13 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   console.log('[Background] Received message:', msg);
   
+  if (msg.action === 'cancelExport') {
+    console.log('[Background] Export cancellation requested');
+    isCancelled = true;
+    sendResponse({ success: true });
+    return true;
+  }
+  
   if (msg.action === 'startCrawl') {
     console.log('[Background] Processing startCrawl action');
     
@@ -40,7 +50,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     pagesRemaining = parseInt(msg.pages, 10);
     if (isNaN(pagesRemaining) || pagesRemaining < 1) pagesRemaining = Infinity;
     
+    // Initialize progress tracking
+    totalPagesToExport = pagesRemaining === Infinity ? msg.pages || 1 : pagesRemaining;
+    currentPageNumber = 0;
+    isCancelled = false;
+    
     console.log(`[Background] Starting crawl for ${pagesRemaining === Infinity ? 'all' : pagesRemaining} pages`);
+    
+    // Initialize progress data storage
+    chrome.storage.local.set({
+      exportProgress: {
+        totalPages: totalPagesToExport,
+        currentPage: 0,
+        totalProducts: 0
+      }
+    });
     
     chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
       const tab = tabs[0];
@@ -54,21 +78,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       collected = [];
       isDownloading = false;
       
-      // For now, just test that we can inject a simple script
-      chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => {
-          console.log('[Content] Simple test script executed');
-          return { test: true, url: window.location.href };
-        }
-      }).then(result => {
-        console.log('[Background] Test script result:', result);
-        
-        // Now try the actual crawl
-        crawlPage(tab.id);
-      }).catch(error => {
-        console.error('[Background] Error executing test script:', error);
-      });
+      // Progress tracking will be handled via popup and notifications
+      
+      // Start progress notification system
+      showProgressNotification('start');
+      updateBadgeText(0, totalPagesToExport);
+      
+      // Start the crawl
+      crawlPage(tab.id);
     });
     
     return true;
@@ -78,9 +95,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 function crawlPage(tabId) {
-  if (pagesRemaining !== Infinity) pagesRemaining--;
+  // Check if export was cancelled
+  if (isCancelled) {
+    console.log('[Background] Export cancelled, stopping crawl');
+    return;
+  }
   
-  console.log(`[Background] Starting crawl on tab ${tabId}, pages remaining: ${pagesRemaining}`);
+  if (pagesRemaining !== Infinity) pagesRemaining--;
+  currentPageNumber++;
+  
+  console.log(`[Background] Starting crawl on tab ${tabId}, page ${currentPageNumber}, pages remaining: ${pagesRemaining}`);
+  
+  // Update progress
+  updateProgress(tabId);
 
   // Execute the extraction function using the same logic as content.js
   chrome.scripting.executeScript({
@@ -180,7 +207,7 @@ function crawlPage(tabId) {
           return;
         }
         const nextUrl = nextRes[0].result;
-        if (nextUrl && pagesRemaining > 0) {
+        if (nextUrl && pagesRemaining > 0 && !isCancelled) {
           chrome.tabs.update(tabId, { url: nextUrl }, () => {
             if (chrome.runtime.lastError) {
               finishAndDownload();
@@ -190,7 +217,7 @@ function crawlPage(tabId) {
             let navigationComplete = false;
             
             const listener = (updatedId, info) => {
-              if (updatedId === tabId && info.status === 'complete' && !navigationComplete) {
+              if (updatedId === tabId && info.status === 'complete' && !navigationComplete && !isCancelled) {
                 navigationComplete = true;
                 chrome.tabs.onUpdated.removeListener(listener);
                 setTimeout(() => crawlPage(tabId), 1000);
@@ -218,6 +245,107 @@ function crawlPage(tabId) {
   });
 }
 
+// Notification and badge progress functions
+function showProgressNotification(type, data = {}) {
+  const notificationId = 'amazon-exporter-progress';
+  
+  switch (type) {
+    case 'start':
+      chrome.notifications.create(notificationId, {
+        type: 'basic',
+        title: '🚀 Amazon Products Exporter',
+        message: `Iniciando extracción de ${totalPagesToExport} páginas...`,
+        priority: 1
+      });
+      break;
+      
+    case 'progress':
+      const { currentPage, totalPages, totalProducts } = data;
+      if (currentPage % 2 === 0 || currentPage === totalPages) { // Update every 2 pages or on last page
+        chrome.notifications.update(notificationId, {
+          message: `Página ${currentPage}/${totalPages} - ${totalProducts} productos encontrados`
+        });
+      }
+      break;
+      
+    case 'complete':
+      chrome.notifications.update(notificationId, {
+        title: '✅ Extracción completada',
+        message: `${data.totalProducts} productos exportados. Configurando Bayesian scores...`,
+        priority: 2
+      });
+      
+      // Clear notification after 5 seconds
+      setTimeout(() => {
+        chrome.notifications.clear(notificationId);
+      }, 5000);
+      break;
+      
+    case 'error':
+      chrome.notifications.update(notificationId, {
+        title: '❌ Error en la extracción',
+        message: data.error || 'Error inesperado durante la extracción',
+        priority: 2
+      });
+      break;
+  }
+}
+
+function updateBadgeText(current, total) {
+  const badgeText = total > 0 ? `${current}/${total}` : '';
+  chrome.action.setBadgeText({ text: badgeText });
+  chrome.action.setBadgeBackgroundColor({ color: '#28a745' });
+  
+  if (current === total && total > 0) {
+    // Show completion badge briefly
+    chrome.action.setBadgeText({ text: '✓' });
+    chrome.action.setBadgeBackgroundColor({ color: '#007bff' });
+    
+    // Clear badge after 5 seconds
+    setTimeout(() => {
+      chrome.action.setBadgeText({ text: '' });
+    }, 5000);
+  }
+}
+
+// Function to update progress indicator
+function updateProgress(tabId) {
+  const progressData = {
+    totalPages: totalPagesToExport,
+    currentPage: currentPageNumber,
+    totalProducts: collected.length,
+    currentUrl: ''
+  };
+  
+  // Get current tab URL for side panel
+  chrome.tabs.get(tabId, (tab) => {
+    if (!chrome.runtime.lastError && tab) {
+      progressData.currentUrl = tab.url;
+    }
+    
+    // Store progress data
+    chrome.storage.local.set({ exportProgress: progressData });
+    
+    // Send progress update to popup (if open)
+    chrome.runtime.sendMessage({
+      action: 'progressUpdate',
+      data: progressData
+    }).catch(() => {
+      // Popup might not be open, ignore errors
+    });
+  });
+  
+  // Update badge text
+  updateBadgeText(currentPageNumber, totalPagesToExport);
+  
+  // Show progress notification
+  showProgressNotification('progress', {
+    currentPage: currentPageNumber,
+    totalPages: totalPagesToExport,
+    totalProducts: collected.length
+  });
+}
+
 function finishAndDownload() {
   if (isDownloading) {
     console.log('[Background] Download already in progress, skipping');
@@ -230,8 +358,34 @@ function finishAndDownload() {
   try {
     if (collected.length === 0) {
       console.log('[Background] No products collected');
+      const errorMsg = 'No se encontraron productos para exportar';
+      
+      showProgressNotification('error', { error: errorMsg });
+      
+      // Send error to popup (if open)
+      chrome.runtime.sendMessage({
+        action: 'exportError',
+        error: errorMsg
+      }).catch(() => {
+        // Popup might not be open, ignore errors
+      });
+      
       return;
     }
+    
+    // Show completion notification and update badge
+    showProgressNotification('complete', { 
+      totalProducts: collected.length 
+    });
+    updateBadgeText(totalPagesToExport, totalPagesToExport);
+    
+    // Send completion to popup (if open)
+    chrome.runtime.sendMessage({
+      action: 'exportComplete',
+      data: { totalProducts: collected.length }
+    }).catch(() => {
+      // Popup might not be open, ignore errors
+    });
     
     // Store extracted products in chrome.storage for the Bayesian selection page
     chrome.storage.local.set({ extractedProducts: collected }, () => {
@@ -248,6 +402,17 @@ function finishAndDownload() {
     
   } catch (error) {
     console.error('[Background] Error during finish process:', error);
+    const errorMsg = error.message || 'Error inesperado durante la extracción';
+    
+    showProgressNotification('error', { error: errorMsg });
+    
+    // Send error to popup (if open)
+    chrome.runtime.sendMessage({
+      action: 'exportError',
+      error: errorMsg
+    }).catch(() => {
+      // Popup might not be open, ignore errors
+    });
   }
 }
 

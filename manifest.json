@@ -3,7 +3,7 @@
     "name": "Amazon Products Exporter",
     "version": "1.0",
     "description": "Exporta nombre, estrellas, reseñas, precio y bayescore de Amazon.",
-    "permissions": ["activeTab", "downloads", "scripting", "tabs", "storage"],
+    "permissions": ["activeTab", "downloads", "scripting", "tabs", "storage", "notifications"],
     "host_permissions": [
       "*://*.amazon.com.mx/*",
       "*://*.amazon.com/*",

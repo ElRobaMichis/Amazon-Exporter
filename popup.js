@@ -1,5 +1,8 @@
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+  // Check if there's an active export and show progress
+  checkExportProgress();
+  
   // Request max pages from content script
   chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
     const tabId = tabs[0]?.id;
@@ -16,6 +19,15 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show helpful text
         pageCountHelp.textContent = `Se detectaron ${response.maxPages} páginas disponibles`;
         pageCountHelp.style.display = 'block';
+      }
+    });
+  });
+  
+  // Set up cancel button
+  document.getElementById('cancelExport').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ action: 'cancelExport' }, response => {
+      if (response?.success) {
+        hideProgressSection();
       }
     });
   });
@@ -55,8 +67,10 @@ document.getElementById('exportPages').addEventListener('click', () => {
       alert(`Error: ${resp.error}`);
     } else if (resp && resp.success) {
       console.log('[Popup] Crawl started successfully');
-      // Close popup to let background script work
-      window.close();
+      // Show progress section and hide export section
+      showProgressSection();
+      startProgressListener();
+      // Don't close popup, keep it open to show progress
     }
   });
 });
@@ -93,5 +107,64 @@ function exportData(format) {
       });
       downloadUtils.downloadBlob(blob, filename);
     });
+  });
+}
+
+// Progress management functions
+function showProgressSection() {
+  document.getElementById('progressSection').style.display = 'block';
+  document.getElementById('exportSection').style.display = 'none';
+  document.querySelector('.multi-page-section').style.display = 'none';
+}
+
+function hideProgressSection() {
+  document.getElementById('progressSection').style.display = 'none';
+  document.getElementById('exportSection').style.display = 'block';
+  document.querySelector('.multi-page-section').style.display = 'block';
+}
+
+function updateProgressUI(data) {
+  const { currentPage, totalPages, totalProducts } = data;
+  
+  // Update progress text
+  document.getElementById('progressText').textContent = 
+    `Página ${currentPage}/${totalPages} - ${totalProducts} productos encontrados`;
+  
+  // Update progress bar
+  const progressPercent = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
+  document.getElementById('progressFill').style.width = `${progressPercent}%`;
+  
+  // Update stats
+  document.getElementById('progressPages').textContent = `Páginas: ${currentPage}/${totalPages}`;
+  document.getElementById('progressProducts').textContent = `Productos: ${totalProducts}`;
+}
+
+function checkExportProgress() {
+  chrome.storage.local.get(['exportProgress'], result => {
+    if (result.exportProgress) {
+      const progress = result.exportProgress;
+      // If there's active progress, show it
+      if (progress.currentPage > 0 && progress.currentPage < progress.totalPages) {
+        showProgressSection();
+        updateProgressUI(progress);
+        
+        // Start listening for progress updates
+        startProgressListener();
+      }
+    }
+  });
+}
+
+function startProgressListener() {
+  // Listen for progress updates from background script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'progressUpdate') {
+      updateProgressUI(message.data);
+    } else if (message.action === 'exportComplete') {
+      hideProgressSection();
+    } else if (message.action === 'exportError') {
+      hideProgressSection();
+      alert(`Error durante la extracción: ${message.error}`);
+    }
   });
 }
