@@ -1,6 +1,99 @@
 // productExtractor.js - Shared product extraction utility
 
 const ProductExtractor = {
+  // Extract ASIN from data attribute
+  extractAsin(container) {
+    return container.getAttribute('data-asin') || '';
+  },
+
+  // Extract image URL from img.s-image
+  extractImageUrl(container) {
+    const img = container.querySelector('img.s-image');
+    return img?.src || '';
+  },
+
+  // Extract list price (original price before discount)
+  extractListPrice(container) {
+    const selectors = [
+      'span.a-text-price[data-a-strike="true"] span.a-offscreen',
+      '.a-price.a-text-price span.a-offscreen'
+    ];
+    for (const sel of selectors) {
+      const el = container.querySelector(sel);
+      if (el) {
+        const match = el.textContent.match(/[\d,]+\.?\d*/);
+        return match ? match[0].replace(/,/g, '') : '';
+      }
+    }
+    return '';
+  },
+
+  // Extract monthly purchases ("3k+ comprados" or "3k+ bought")
+  extractMonthlyPurchases(container) {
+    const spans = container.querySelectorAll('span.a-color-secondary');
+    for (const span of spans) {
+      const text = span.textContent.toLowerCase();
+      if (text.includes('comprados') || text.includes('bought')) {
+        const match = span.textContent.match(/([\d.,]+\s*[kKmM]?\+?)/);
+        return match ? match[1].trim() : '';
+      }
+    }
+    return '';
+  },
+
+  // Check for Prime badge
+  extractIsPrime(container) {
+    return !!container.querySelector('i.a-icon-prime, [aria-label="Prime"]');
+  },
+
+  // Extract delivery date from delivery block
+  extractDeliveryDate(container) {
+    const el = container.querySelector('.udm-primary-delivery-message, [data-cy="delivery-block"]');
+    return el?.textContent?.trim() || '';
+  },
+
+  // Extract unit price (e.g., "$0.03/ml")
+  extractUnitPrice(container) {
+    const priceSection = container.querySelector('[data-cy="price-recipe"]');
+    if (priceSection) {
+      const spans = priceSection.querySelectorAll('span.a-color-secondary');
+      for (const span of spans) {
+        if (span.textContent.includes('/')) {
+          const match = span.textContent.match(/[\$€£][\d.,]+\/\w+/);
+          return match ? match[0] : '';
+        }
+      }
+    }
+    return '';
+  },
+
+  // Extract installment price (e.g., "$14.41 x 12 meses")
+  extractInstallmentPrice(container) {
+    const priceSection = container.querySelector('[data-cy="price-recipe"]');
+    if (priceSection) {
+      const text = priceSection.textContent;
+      const match = text.match(/[\$€£][\d.,]+\s*x\s*\d+\s*(meses|months)?/i);
+      return match ? match[0] : '';
+    }
+    return '';
+  },
+
+  // Check for Subscribe & Save availability
+  extractHasSubscribeSave(container) {
+    const text = container.textContent.toLowerCase();
+    return text.includes('suma y ahorra') || text.includes('subscribe & save');
+  },
+
+  // Calculate discount percentage
+  calculateDiscount(currentPrice, listPrice) {
+    const current = parseFloat(currentPrice) || 0;
+    const list = parseFloat(listPrice) || 0;
+    if (list > 0 && current > 0 && list > current) {
+      return Math.round(((list - current) / list) * 100).toString();
+    }
+    return '';
+  },
+
   // Helper function to extract product name from various sources
   extractProductName(container) {
     // Look for the title container that may have brand and product name separated
@@ -229,23 +322,96 @@ const ProductExtractor = {
       }
     }
 
+    // Extract product link - try multiple strategies
+    let link = '';
+
+    // Strategy 1: Look for link containing h2 in title section (common Amazon layout)
+    const titleSection = container.querySelector('div[data-cy="title-recipe"], .s-title-instructions-style');
+    if (titleSection) {
+      const titleLink = titleSection.querySelector('a.a-link-normal[href*="/dp/"], a[href*="/dp/"]');
+      if (titleLink?.href) {
+        link = titleLink.href;
+      }
+    }
+
+    // Strategy 2: Look for h2 > a or a > h2 patterns
+    if (!link) {
+      const h2Link = container.querySelector('h2 a[href*="/dp/"]');
+      if (h2Link?.href) {
+        link = h2Link.href;
+      }
+    }
+
+    // Strategy 3: Look for any product link with /dp/ pattern
+    if (!link) {
+      const anyProductLink = container.querySelector('a.a-link-normal[href*="/dp/"]');
+      if (anyProductLink?.href) {
+        link = anyProductLink.href;
+      }
+    }
+
+    // Strategy 4: Construct link from ASIN if available
+    if (!link) {
+      const asin = container.getAttribute('data-asin');
+      if (asin) {
+        // Detect Amazon domain from current page
+        const domain = typeof window !== 'undefined' ? window.location.origin : 'https://www.amazon.com';
+        link = `${domain}/dp/${asin}`;
+      }
+    }
+
+    // Extract new fields
+    const asin = this.extractAsin(container);
+    const imageUrl = this.extractImageUrl(container);
+    const listPrice = this.extractListPrice(container);
+    const discount = this.calculateDiscount(price, listPrice);
+    const monthlyPurchases = this.extractMonthlyPurchases(container);
+    const isPrime = this.extractIsPrime(container);
+    const deliveryDate = this.extractDeliveryDate(container);
+    const unitPrice = this.extractUnitPrice(container);
+    const installmentPrice = this.extractInstallmentPrice(container);
+    const hasSubscribeSave = this.extractHasSubscribeSave(container);
+
     return {
       name: this.cleanProductName(name),
       rating,
       reviews,
-      price
+      price,
+      link,
+      asin,
+      imageUrl,
+      listPrice,
+      discount,
+      monthlyPurchases,
+      isPrime,
+      deliveryDate,
+      unitPrice,
+      installmentPrice,
+      hasSubscribeSave
     };
+  },
+
+  // Helper function to check if a product name is a duplicate of existing ones
+  isDuplicateName(newName, existingNames) {
+    const shortNew = newName.substring(0, 30).toLowerCase();
+    return existingNames.some(existing => {
+      const shortExisting = existing.substring(0, 30).toLowerCase();
+      // Check if first 30 chars match, or if one contains the other
+      return shortNew === shortExisting ||
+             existing.toLowerCase().includes(shortNew) ||
+             newName.toLowerCase().includes(shortExisting);
+    });
   },
 
   // Collect all products using multiple strategies
   collectAllProducts(document) {
     const allProductData = new Map(); // Use Map to avoid duplicates by name
 
-    // Strategy 1: Find products using data-component-type
+    // Strategy 1: Find products using data-component-type (primary strategy)
     const searchResults = document.querySelectorAll('[data-component-type="s-search-result"]');
     searchResults.forEach(container => {
       const data = this.extractProductData(container);
-      if (data) {
+      if (data && !this.isDuplicateName(data.name, Array.from(allProductData.keys()))) {
         allProductData.set(data.name, data);
       }
     });
@@ -254,13 +420,13 @@ const ProductExtractor = {
     const asinElements = document.querySelectorAll('[data-asin]:not([data-asin=""])');
     asinElements.forEach(container => {
       // Skip if already found in strategy 1
-      if (container.hasAttribute('data-component-type') && 
+      if (container.hasAttribute('data-component-type') &&
           container.getAttribute('data-component-type') === 's-search-result') {
         return;
       }
-      
+
       const data = this.extractProductData(container);
-      if (data && !allProductData.has(data.name)) {
+      if (data && !this.isDuplicateName(data.name, Array.from(allProductData.keys()))) {
         allProductData.set(data.name, data);
       }
     });
@@ -270,21 +436,13 @@ const ProductExtractor = {
     productImages.forEach(img => {
       const altText = img.alt.trim();
       const cleanedAlt = this.cleanProductName(altText);
-      
+
       if (cleanedAlt && this.isValidProductName(cleanedAlt)) {
-        // Enhanced duplicate detection
-        const isDuplicate = Array.from(allProductData.keys()).some(existing => {
-          const shortExisting = existing.substring(0, 30).toLowerCase();
-          const shortAlt = cleanedAlt.substring(0, 30).toLowerCase();
-          return existing.toLowerCase().includes(shortAlt) || 
-                 cleanedAlt.toLowerCase().includes(shortExisting);
-        });
-        
-        if (!isDuplicate) {
+        if (!this.isDuplicateName(cleanedAlt, Array.from(allProductData.keys()))) {
           // Try to find the parent container with product data
-          let container = img.closest('[data-component-type="s-search-result"]') || 
+          let container = img.closest('[data-component-type="s-search-result"]') ||
                          img.closest('[data-asin]');
-          
+
           if (container) {
             const data = this.extractProductData(container);
             if (data) {
@@ -294,15 +452,8 @@ const ProductExtractor = {
               }
               allProductData.set(data.name, data);
             }
-          } else {
-            // If no container found, add with default values
-            allProductData.set(cleanedAlt, {
-              name: cleanedAlt,
-              rating: "0",
-              reviews: "0",
-              price: "0"
-            });
           }
+          // Removed fallback that added products without links
         }
       }
     });
@@ -316,24 +467,35 @@ const ProductExtractor = {
     const items = Array.from(
       document.querySelectorAll('div.s-main-slot [data-component-type="s-search-result"]')
     );
-    
+
     return items.map(el => {
       const data = this.extractProductData(el);
       if (!data) return null;
-      
+
       // For backward compatibility with background.js format
       const img = el.querySelector('img.s-image');
       const rawAlt = (img?.alt || '').replace(/^Anuncio patrocinado:\s*/i, '').trim();
       const description = rawAlt.startsWith(data.name) && rawAlt !== data.name
         ? rawAlt.slice(data.name.length).trim()
         : 'No aplica';
-      
+
       return {
         title: data.name,
         description,
         rating: data.rating,
         reviews: data.reviews,
-        price: data.price
+        price: data.price,
+        link: data.link,
+        asin: data.asin,
+        imageUrl: data.imageUrl,
+        listPrice: data.listPrice,
+        discount: data.discount,
+        monthlyPurchases: data.monthlyPurchases,
+        isPrime: data.isPrime,
+        deliveryDate: data.deliveryDate,
+        unitPrice: data.unitPrice,
+        installmentPrice: data.installmentPrice,
+        hasSubscribeSave: data.hasSubscribeSave
       };
     }).filter(Boolean);
   }

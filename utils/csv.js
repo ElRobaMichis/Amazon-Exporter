@@ -8,7 +8,8 @@
   function deduplicate(products){
     const seen = new Set();
     return products.filter(p => {
-      const key = [p.title,p.rating,p.reviews,p.price,p.bayescore].join('|');
+      // Use ASIN as primary key if available, otherwise use title+price
+      const key = p.asin || [p.title,p.price].join('|');
       if(seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -17,17 +18,33 @@
 
   function toCsv(products){
     const bom = '﻿';
-    
+
     // Excel table headers with proper formatting for auto-filtering
-    const header = ['Name','Rating','Reviews','Price','Bayescore'];
-    
+    const header = [
+      'Name', 'ASIN', 'Rating', 'Reviews', 'Price', 'List Price',
+      'Discount %', 'Monthly Purchases', 'Prime', 'Unit Price',
+      'Installment', 'Subscribe & Save', 'Delivery', 'Link',
+      'Image URL', 'Bayescore'
+    ];
+
     // Format data for Excel with proper data types
     const rows = products.map(p => [
       p.title || '',
-      parseFloat(p.rating) || 0,  // Numeric for proper sorting
-      parseInt(p.reviews) || 0,   // Numeric for proper sorting
-      parseFloat(p.price) || 0,   // Numeric for proper sorting
-      parseFloat(p.bayescore) || 0 // Numeric for proper sorting
+      p.asin || '',
+      parseFloat(p.rating) || 0,
+      parseInt(p.reviews) || 0,
+      parseFloat(p.price) || 0,
+      parseFloat(p.listPrice) || 0,
+      p.discount || '',
+      p.monthlyPurchases || '',
+      p.isPrime ? 'Yes' : 'No',
+      p.unitPrice || '',
+      p.installmentPrice || '',
+      p.hasSubscribeSave ? 'Yes' : 'No',
+      p.deliveryDate || '',
+      p.link || '',
+      p.imageUrl || '',
+      parseFloat(p.bayescore) || 0
     ].map(v => {
       // Handle different data types for CSV
       if (typeof v === 'number') {
@@ -35,28 +52,35 @@
       }
       return `"${v.toString().replace(/"/g,'""')}"`;
     }).join(','));
-    
+
     // Create CSV content with BOM for proper Excel encoding
     const csvContent = bom + header.join(',') + '\n' + rows.join('\n');
-    
+
     return csvContent;
   }
 
   function toTable(products){
-    const header = ['Name','Description','Rating','Reviews','Price','Bayescore'];
-    
+    const header = [
+      'Name', 'ASIN', 'Rating', 'Reviews', 'Price', 'List Price',
+      'Discount %', 'Monthly Purchases', 'Prime', 'Bayescore'
+    ];
+
     const headerRow = header.map(h => `<th>${h}</th>`).join('');
-    
+
     const rows = products.map(p => {
       const cells = [
         p.title || '',
-        p.description || 'No aplica',
+        p.asin || '',
         p.rating || '0',
         p.reviews || '0',
         p.price || '0',
+        p.listPrice || '',
+        p.discount || '',
+        p.monthlyPurchases || '',
+        p.isPrime ? 'Yes' : 'No',
         p.bayescore || '0'
       ].map(v => `<td>${v.toString().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>`).join('');
-      
+
       return `<tr>${cells}</tr>`;
     }).join('\n');
     
@@ -91,7 +115,12 @@
 
   function toExcel(products) {
     // Create Excel XML format with native table formatting
-    const header = ['Name','Description','Rating','Reviews','Price','Bayescore'];
+    const header = [
+      'Name', 'ASIN', 'Rating', 'Reviews', 'Price', 'List Price',
+      'Discount %', 'Monthly Purchases', 'Prime', 'Unit Price',
+      'Installment', 'Subscribe & Save', 'Delivery', 'Link',
+      'Image URL', 'Bayescore'
+    ];
     
     // XML header for Excel workbook
     const xmlHeader = `<?xml version="1.0"?>
@@ -144,12 +173,23 @@ ${header.map(h => `   <Cell ss:StyleID="HeaderStyle"><Data ss:Type="String">${h}
 
     // Create data rows
     const dataRows = products.map(p => {
+      const escapeXml = (str) => (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const cells = [
-        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${(p.title || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</Data></Cell>`,
-        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${(p.description || 'No aplica').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.title)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.asin)}</Data></Cell>`,
         `   <Cell ss:StyleID="NumberStyle"><Data ss:Type="Number">${parseFloat(p.rating) || 0}</Data></Cell>`,
         `   <Cell ss:StyleID="NumberStyle"><Data ss:Type="Number">${parseInt(p.reviews) || 0}</Data></Cell>`,
         `   <Cell ss:StyleID="NumberStyle"><Data ss:Type="Number">${parseFloat(p.price) || 0}</Data></Cell>`,
+        `   <Cell ss:StyleID="NumberStyle"><Data ss:Type="Number">${parseFloat(p.listPrice) || 0}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.discount)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.monthlyPurchases)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${p.isPrime ? 'Yes' : 'No'}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.unitPrice)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.installmentPrice)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${p.hasSubscribeSave ? 'Yes' : 'No'}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.deliveryDate)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.link)}</Data></Cell>`,
+        `   <Cell ss:StyleID="DataStyle"><Data ss:Type="String">${escapeXml(p.imageUrl)}</Data></Cell>`,
         `   <Cell ss:StyleID="NumberStyle"><Data ss:Type="Number">${parseFloat(p.bayescore) || 0}</Data></Cell>`
       ];
       return `  <Row>\n${cells.join('\n')}\n  </Row>`;

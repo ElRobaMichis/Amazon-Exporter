@@ -19,6 +19,8 @@ let isDownloading = false;
 let totalPagesToExport = 0;
 let currentPageNumber = 0;
 let isCancelled = false;
+let firstPageUrl = null;
+let crawlTabId = null;
 
 console.log('[Background] Background script initialized');
 
@@ -74,9 +76,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       
       console.log(`[Background] Active tab found: ${tab.id}, URL: ${tab.url}`);
-      
+
       collected = [];
       isDownloading = false;
+      crawlTabId = tab.id;
       
       // Progress tracking will be handled via popup and notifications
       
@@ -144,12 +147,23 @@ function crawlPage(tabId) {
           
           console.log(`[Content] After additional filtering: ${filtered.length} products (removed ${products.length - filtered.length} sponsored/invalid)`);
           
-          // Normalize product format for consistency with content.js format
+          // Normalize product format - include all fields for proper deduplication
           return filtered.map(product => ({
             title: product.title,
             rating: product.rating,
-            reviews: product.reviews, 
-            price: product.price
+            reviews: product.reviews,
+            price: product.price,
+            link: product.link,
+            asin: product.asin,
+            imageUrl: product.imageUrl,
+            listPrice: product.listPrice,
+            discount: product.discount,
+            monthlyPurchases: product.monthlyPurchases,
+            isPrime: product.isPrime,
+            deliveryDate: product.deliveryDate,
+            unitPrice: product.unitPrice,
+            installmentPrice: product.installmentPrice,
+            hasSubscribeSave: product.hasSubscribeSave
           }));
         } else {
           console.error('[Content] ProductExtractor not available');
@@ -173,7 +187,21 @@ function crawlPage(tabId) {
       }
       const pageProducts = res[0].result;
       console.log(`[Background] Collected ${pageProducts.length} products from page`);
-      collected = collected.concat(pageProducts);
+
+      // Deduplicate while adding - use ASIN as primary key, fallback to title
+      const existingKeys = new Set(collected.map(p => p.asin || p.title));
+      const newProducts = pageProducts.filter(p => {
+        const key = p.asin || p.title;
+        if (existingKeys.has(key)) {
+          console.log(`[Background] Skipping duplicate: ${key}`);
+          return false;
+        }
+        existingKeys.add(key);
+        return true;
+      });
+
+      console.log(`[Background] Added ${newProducts.length} new products (${pageProducts.length - newProducts.length} duplicates skipped)`);
+      collected = collected.concat(newProducts);
 
       chrome.scripting.executeScript({
         target: { tabId },
@@ -253,6 +281,7 @@ function showProgressNotification(type, data = {}) {
     case 'start':
       chrome.notifications.create(notificationId, {
         type: 'basic',
+        iconUrl: 'icon48.png',
         title: '🚀 Amazon Products Exporter',
         message: `Iniciando extracción de ${totalPagesToExport} páginas...`,
         priority: 1
@@ -262,19 +291,25 @@ function showProgressNotification(type, data = {}) {
     case 'progress':
       const { currentPage, totalPages, totalProducts } = data;
       if (currentPage % 2 === 0 || currentPage === totalPages) { // Update every 2 pages or on last page
-        chrome.notifications.update(notificationId, {
-          message: `Página ${currentPage}/${totalPages} - ${totalProducts} productos encontrados`
+        chrome.notifications.create(notificationId, {
+          type: 'basic',
+          iconUrl: 'icon48.png',
+          title: '📦 Amazon Products Exporter',
+          message: `Página ${currentPage}/${totalPages} - ${totalProducts} productos encontrados`,
+          priority: 1
         });
       }
       break;
       
     case 'complete':
-      chrome.notifications.update(notificationId, {
+      chrome.notifications.create(notificationId, {
+        type: 'basic',
+        iconUrl: 'icon48.png',
         title: '✅ Extracción completada',
         message: `${data.totalProducts} productos exportados. Configurando Bayesian scores...`,
         priority: 2
       });
-      
+
       // Clear notification after 5 seconds
       setTimeout(() => {
         chrome.notifications.clear(notificationId);
@@ -282,7 +317,9 @@ function showProgressNotification(type, data = {}) {
       break;
       
     case 'error':
-      chrome.notifications.update(notificationId, {
+      chrome.notifications.create(notificationId, {
+        type: 'basic',
+        iconUrl: 'icon48.png',
         title: '❌ Error en la extracción',
         message: data.error || 'Error inesperado durante la extracción',
         priority: 2
@@ -389,15 +426,69 @@ function finishAndDownload() {
     
     // Store extracted products in chrome.storage for the Bayesian selection page
     chrome.storage.local.set({ extractedProducts: collected }, () => {
-      console.log('[Background] Products stored, opening Bayesian selection page');
-      
-      // Open the Bayesian selection page
-      chrome.tabs.create({
-        url: chrome.runtime.getURL('bayes_selection.html'),
-        active: true
-      }, (tab) => {
-        console.log(`[Background] Bayesian selection page opened in tab ${tab.id}`);
-      });
+      console.log('[Background] Products stored, navigating to first page before opening Bayesian selection');
+
+      // Click on page 1 button before opening the Bayesian selection page
+      if (crawlTabId) {
+        chrome.scripting.executeScript({
+          target: { tabId: crawlTabId },
+          func: () => {
+            // Find and click the "1" page button in Amazon pagination
+            // Primary selector: the exact button class used by Amazon
+            const pageOneButton = document.querySelector('a.s-pagination-button[aria-label="Ir a la página 1"]') ||
+                                  document.querySelector('a.s-pagination-button[aria-label="Go to page 1"]') ||
+                                  document.querySelector('a.s-pagination-item.s-pagination-button');
+
+            if (pageOneButton) {
+              pageOneButton.click();
+              console.log('[Content] Clicked on page 1 button');
+              return true;
+            }
+
+            // Fallback: search through all pagination buttons for one with text "1"
+            const allPaginationLinks = document.querySelectorAll('a.s-pagination-item, a.s-pagination-button');
+            for (const link of allPaginationLinks) {
+              if (link.textContent.trim() === '1') {
+                link.click();
+                console.log('[Content] Clicked on page 1 button (fallback)');
+                return true;
+              }
+            }
+
+            console.log('[Content] Page 1 button not found');
+            return false;
+          }
+        }).then(() => {
+          console.log('[Background] Navigated to page 1, now opening Bayesian selection page');
+
+          // Small delay to let the page start loading, then open Bayesian selection
+          setTimeout(() => {
+            chrome.tabs.create({
+              url: chrome.runtime.getURL('bayes_selection.html'),
+              active: true
+            }, (tab) => {
+              console.log(`[Background] Bayesian selection page opened in tab ${tab.id}`);
+            });
+          }, 500);
+        }).catch((error) => {
+          console.error('[Background] Error clicking page 1:', error);
+          // Still open Bayesian selection page even if clicking failed
+          chrome.tabs.create({
+            url: chrome.runtime.getURL('bayes_selection.html'),
+            active: true
+          }, (tab) => {
+            console.log(`[Background] Bayesian selection page opened in tab ${tab.id}`);
+          });
+        });
+      } else {
+        // No tab ID stored, just open Bayesian selection page
+        chrome.tabs.create({
+          url: chrome.runtime.getURL('bayes_selection.html'),
+          active: true
+        }, (tab) => {
+          console.log(`[Background] Bayesian selection page opened in tab ${tab.id}`);
+        });
+      }
     });
     
   } catch (error) {

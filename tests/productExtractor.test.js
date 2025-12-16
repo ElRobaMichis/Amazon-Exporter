@@ -56,11 +56,14 @@ describe('ProductExtractor - Shared Utility', () => {
   });
 
   describe('Product Data Extraction', () => {
-    test('should extract complete product data', () => {
+    test('should extract complete product data with all fields', () => {
       const html = `
-        <div data-component-type="s-search-result">
+        <div data-component-type="s-search-result" data-asin="B0ABC123XY">
+          <div class="s-product-image-container">
+            <img class="s-image" src="https://m.media-amazon.com/images/I/test.jpg" alt="Sony WH-1000XM5" />
+          </div>
           <h2>
-            <a aria-label="Sony WH-1000XM5 Wireless Noise Canceling Headphones">
+            <a aria-label="Sony WH-1000XM5 Wireless Noise Canceling Headphones" href="/dp/B0ABC123XY">
               <span>Sony WH-1000XM5 Wireless...</span>
             </a>
           </h2>
@@ -72,22 +75,80 @@ describe('ProductExtractor - Shared Utility', () => {
               <span>2,345</span>
             </a>
           </div>
-          <span class="a-price">
-            <span class="a-offscreen">$399.99</span>
-          </span>
+          <span class="a-color-secondary">3k+ comprados el mes pasado</span>
+          <div data-cy="price-recipe">
+            <span class="a-price">
+              <span class="a-offscreen">$399.99</span>
+            </span>
+            <span class="a-text-price" data-a-strike="true">
+              <span class="a-offscreen">$499.99</span>
+            </span>
+            <span class="a-color-secondary">($0.50/ml)</span>
+            <span class="a-color-secondary">$35.00 x 12 meses</span>
+          </div>
+          <i class="a-icon a-icon-prime" aria-label="Prime"></i>
+          <div class="udm-primary-delivery-message">Entrega GRATIS mañana, 15 de dic</div>
+          <span>Suma y Ahorra</span>
         </div>
       `;
-      
+
       createMockDOM(html);
       const container = document.querySelector('[data-component-type="s-search-result"]');
       const productData = ProductExtractor.extractProductData(container);
-      
-      expect(productData).toEqual({
-        name: 'Sony WH-1000XM5 Wireless Noise Canceling Headphones',
-        rating: '4.5',
-        reviews: '2345',
-        price: '399.99'
-      });
+
+      expect(productData.name).toBe('Sony WH-1000XM5 Wireless Noise Canceling Headphones');
+      expect(productData.rating).toBe('4.5');
+      expect(productData.reviews).toBe('2345');
+      expect(productData.price).toBe('399.99');
+      expect(productData.asin).toBe('B0ABC123XY');
+      expect(productData.imageUrl).toBe('https://m.media-amazon.com/images/I/test.jpg');
+      expect(productData.listPrice).toBe('499.99');
+      expect(productData.discount).toBe('20');
+      expect(productData.monthlyPurchases).toBe('3k+');
+      expect(productData.isPrime).toBe(true);
+      expect(productData.deliveryDate).toBe('Entrega GRATIS mañana, 15 de dic');
+      expect(productData.unitPrice).toBe('$0.50/ml');
+      expect(productData.installmentPrice).toBe('$35.00 x 12 meses');
+      expect(productData.hasSubscribeSave).toBe(true);
+    });
+
+    test('should handle missing optional fields gracefully', () => {
+      const html = `
+        <div data-component-type="s-search-result">
+          <h2>
+            <a aria-label="Basic Product Without Extra Fields">
+              <span>Basic Product</span>
+            </a>
+          </h2>
+          <div class="a-row">
+            <i class="a-icon a-icon-star-small">
+              <span class="a-icon-alt">4.0 out of 5 stars</span>
+            </i>
+            <a href="/product-reviews/B0ABC123#customerReviews">
+              <span>100</span>
+            </a>
+          </div>
+          <span class="a-price">
+            <span class="a-offscreen">$29.99</span>
+          </span>
+        </div>
+      `;
+
+      createMockDOM(html);
+      const container = document.querySelector('[data-component-type="s-search-result"]');
+      const productData = ProductExtractor.extractProductData(container);
+
+      expect(productData.name).toBe('Basic Product Without Extra Fields');
+      expect(productData.asin).toBe('');
+      expect(productData.imageUrl).toBe('');
+      expect(productData.listPrice).toBe('');
+      expect(productData.discount).toBe('');
+      expect(productData.monthlyPurchases).toBe('');
+      expect(productData.isPrime).toBe(false);
+      expect(productData.deliveryDate).toBe('');
+      expect(productData.unitPrice).toBe('');
+      expect(productData.installmentPrice).toBe('');
+      expect(productData.hasSubscribeSave).toBe(false);
     });
   });
 
@@ -136,32 +197,134 @@ describe('ProductExtractor - Shared Utility', () => {
       expect(products[2].name).toBe('Product C - Excellent Value for Money');
     });
 
-    test('should extract simple products for background.js format', () => {
+    test('should extract simple products for background.js format with all fields', () => {
       const html = `
         <div class="s-main-slot">
-          <div data-component-type="s-search-result">
+          <div data-component-type="s-search-result" data-asin="B0TEST123">
             <h2>
               <a aria-label="Background Test Product">Background Test</a>
             </h2>
-            <img class="s-image" alt="Background Test Product - Complete Description" />
+            <img class="s-image" src="https://example.com/test.jpg" alt="Background Test Product - Complete Description" />
             <i><span class="a-icon-alt">4.2 out of 5 stars</span></i>
             <a href="#customerReviews"><span>150</span></a>
             <span class="a-price"><span class="a-offscreen">$79.99</span></span>
+            <i class="a-icon-prime"></i>
           </div>
         </div>
       `;
-      
+
       createMockDOM(html);
       const products = ProductExtractor.extractSimpleProducts(document);
-      
+
       expect(products).toHaveLength(1);
-      expect(products[0]).toEqual({
-        title: 'Background Test Product',
-        description: '- Complete Description',
-        rating: '4.2',
-        reviews: '150',
-        price: '79.99'
-      });
+      expect(products[0].title).toBe('Background Test Product');
+      expect(products[0].description).toBe('- Complete Description');
+      expect(products[0].rating).toBe('4.2');
+      expect(products[0].reviews).toBe('150');
+      expect(products[0].price).toBe('79.99');
+      expect(products[0].asin).toBe('B0TEST123');
+      expect(products[0].imageUrl).toBe('https://example.com/test.jpg');
+      expect(products[0].isPrime).toBe(true);
+    });
+  });
+
+  describe('New Field Extraction Methods', () => {
+    test('extractAsin should get ASIN from data attribute', () => {
+      const html = `<div data-asin="B01M3R0WV7"></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractAsin(container)).toBe('B01M3R0WV7');
+    });
+
+    test('extractAsin should return empty string when no ASIN', () => {
+      const html = `<div></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractAsin(container)).toBe('');
+    });
+
+    test('extractImageUrl should get image src', () => {
+      const html = `<div><img class="s-image" src="https://m.media-amazon.com/images/test.jpg" /></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractImageUrl(container)).toBe('https://m.media-amazon.com/images/test.jpg');
+    });
+
+    test('extractListPrice should get strikethrough price', () => {
+      const html = `<div><span class="a-text-price" data-a-strike="true"><span class="a-offscreen">$256.15</span></span></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractListPrice(container)).toBe('256.15');
+    });
+
+    test('extractMonthlyPurchases should parse Spanish format', () => {
+      const html = `<div><span class="a-color-secondary">3k+ comprados el mes pasado</span></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractMonthlyPurchases(container)).toBe('3k+');
+    });
+
+    test('extractMonthlyPurchases should parse English format', () => {
+      const html = `<div><span class="a-color-secondary">5K+ bought in past month</span></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractMonthlyPurchases(container)).toBe('5K+');
+    });
+
+    test('extractIsPrime should detect Prime badge', () => {
+      const html = `<div><i class="a-icon a-icon-prime"></i></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractIsPrime(container)).toBe(true);
+    });
+
+    test('extractIsPrime should return false without Prime badge', () => {
+      const html = `<div><span>No Prime here</span></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractIsPrime(container)).toBe(false);
+    });
+
+    test('extractDeliveryDate should get delivery text', () => {
+      const html = `<div><div class="udm-primary-delivery-message">Entrega GRATIS mañana, 15 de dic</div></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractDeliveryDate(container)).toBe('Entrega GRATIS mañana, 15 de dic');
+    });
+
+    test('extractUnitPrice should parse unit price', () => {
+      const html = `<div><div data-cy="price-recipe"><span class="a-color-secondary">($0.03/mililitro)</span></div></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractUnitPrice(container)).toBe('$0.03/mililitro');
+    });
+
+    test('extractInstallmentPrice should parse installment info', () => {
+      const html = `<div><div data-cy="price-recipe">$14.41 x 12 meses</div></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractInstallmentPrice(container)).toBe('$14.41 x 12 meses');
+    });
+
+    test('extractHasSubscribeSave should detect Spanish Subscribe & Save', () => {
+      const html = `<div><span>Hasta 10% más con Suma y Ahorra</span></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractHasSubscribeSave(container)).toBe(true);
+    });
+
+    test('extractHasSubscribeSave should detect English Subscribe & Save', () => {
+      const html = `<div><span>Save more with Subscribe & Save</span></div>`;
+      createMockDOM(html);
+      const container = document.querySelector('div');
+      expect(ProductExtractor.extractHasSubscribeSave(container)).toBe(true);
+    });
+
+    test('calculateDiscount should compute discount percentage', () => {
+      expect(ProductExtractor.calculateDiscount('142', '256.15')).toBe('45');
+      expect(ProductExtractor.calculateDiscount('80', '100')).toBe('20');
+      expect(ProductExtractor.calculateDiscount('100', '100')).toBe('');
+      expect(ProductExtractor.calculateDiscount('100', '')).toBe('');
     });
   });
 

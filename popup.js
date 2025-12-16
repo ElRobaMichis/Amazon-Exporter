@@ -1,28 +1,18 @@
+// Configuration for page detection
+const PAGE_DETECTION_CONFIG = {
+  MAX_RETRIES: 3,
+  RETRY_DELAYS: [0, 500, 1000], // ms - exponential backoff
+  CONTENT_SCRIPT_TIMEOUT: 3000 // ms - time to wait for content script response
+};
+
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   // Check if there's an active export and show progress
   checkExportProgress();
-  
-  // Request max pages from content script
-  chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-    const tabId = tabs[0]?.id;
-    if (!tabId) return;
-    
-    chrome.tabs.sendMessage(tabId, { action: 'detectMaxPages' }, response => {
-      if (!chrome.runtime.lastError && response?.maxPages && response.maxPages > 1) {
-        const pageCountInput = document.getElementById('pageCount');
-        const pageCountHelp = document.getElementById('pageCountHelp');
-        
-        pageCountInput.value = response.maxPages;
-        pageCountInput.max = response.maxPages;
-        
-        // Show helpful text
-        pageCountHelp.textContent = `Se detectaron ${response.maxPages} páginas disponibles`;
-        pageCountHelp.style.display = 'block';
-      }
-    });
-  });
-  
+
+  // Start page detection with retry mechanism
+  detectPagesWithRetry();
+
   // Set up cancel button
   document.getElementById('cancelExport').addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'cancelExport' }, response => {
@@ -31,7 +21,161 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+
+  // Set up manual retry button
+  document.getElementById('retryDetection').addEventListener('click', () => {
+    detectPagesWithRetry();
+  });
 });
+
+// Main detection function with retry logic
+async function detectPagesWithRetry() {
+  const pageCountHelp = document.getElementById('pageCountHelp');
+  const pageCountHelpText = document.getElementById('pageCountHelpText');
+  const pageCountIcon = document.getElementById('pageCountIcon');
+  const retryButton = document.getElementById('retryDetection');
+
+  // Hide retry button and show detecting status
+  retryButton.style.display = 'none';
+  pageCountHelpText.textContent = 'Detectando páginas...';
+  pageCountIcon.innerHTML = '&#8987;'; // Hourglass
+  pageCountHelp.classList.add('visible', 'detecting');
+  pageCountHelp.classList.remove('error');
+
+  for (let attempt = 0; attempt < PAGE_DETECTION_CONFIG.MAX_RETRIES; attempt++) {
+    // Wait for backoff delay (0ms on first attempt)
+    if (attempt > 0) {
+      pageCountHelpText.textContent = `Reintentando (${attempt + 1}/${PAGE_DETECTION_CONFIG.MAX_RETRIES})...`;
+      await sleep(PAGE_DETECTION_CONFIG.RETRY_DELAYS[attempt]);
+    }
+
+    try {
+      const result = await detectMaxPagesFromContent();
+
+      if (result.success && result.maxPages > 1) {
+        // Success! Update UI
+        updatePageCountUI(result.maxPages);
+        return;
+      }
+
+      // If we got a response with maxPages = 1 on last attempt, it might be a single page
+      if (attempt === PAGE_DETECTION_CONFIG.MAX_RETRIES - 1) {
+        if (result.success && result.maxPages === 1) {
+          pageCountIcon.innerHTML = '&#10003;';
+          pageCountHelpText.textContent = 'Una página detectada';
+          pageCountHelp.classList.remove('detecting', 'error');
+          return;
+        }
+      }
+
+    } catch (error) {
+      console.error(`[Popup] Detection attempt ${attempt + 1} failed:`, error);
+
+      // On first failure, try to inject content script
+      if (attempt === 0 && error.message?.includes('not responding')) {
+        console.log('[Popup] Attempting to inject content script...');
+        await ensureContentScriptInjected();
+      }
+    }
+  }
+
+  // All retries failed - show error and retry button
+  showDetectionError();
+}
+
+// Detect max pages (single attempt)
+function detectMaxPagesFromContent() {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
+      const tabId = tabs[0]?.id;
+      if (!tabId) {
+        reject(new Error('No active tab found'));
+        return;
+      }
+
+      // Set timeout for content script response
+      const timeout = setTimeout(() => {
+        reject(new Error('Content script not responding'));
+      }, PAGE_DETECTION_CONFIG.CONTENT_SCRIPT_TIMEOUT);
+
+      chrome.tabs.sendMessage(tabId, { action: 'detectMaxPages' }, response => {
+        clearTimeout(timeout);
+
+        if (chrome.runtime.lastError) {
+          reject(new Error(`Content script error: ${chrome.runtime.lastError.message}`));
+          return;
+        }
+
+        if (!response || typeof response.maxPages !== 'number') {
+          reject(new Error('Invalid response from content script'));
+          return;
+        }
+
+        resolve({
+          success: true,
+          maxPages: response.maxPages
+        });
+      });
+    });
+  });
+}
+
+// Ensure content script is injected
+async function ensureContentScriptInjected() {
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = tabs[0]?.id;
+
+    if (!tabId) return;
+
+    // Inject content script programmatically
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['utils/productExtractor.js', 'content.js']
+    });
+
+    console.log('[Popup] Content script injected successfully');
+    // Small delay to let script initialize
+    await sleep(100);
+  } catch (error) {
+    console.error('[Popup] Failed to inject content script:', error);
+  }
+}
+
+// Update UI with detected page count
+function updatePageCountUI(maxPages) {
+  const pageCountInput = document.getElementById('pageCount');
+  const pageCountHelp = document.getElementById('pageCountHelp');
+  const pageCountHelpText = document.getElementById('pageCountHelpText');
+  const pageCountIcon = document.getElementById('pageCountIcon');
+
+  pageCountInput.value = maxPages;
+  pageCountInput.max = maxPages;
+
+  pageCountIcon.innerHTML = '&#10003;';
+  pageCountHelpText.textContent = `Se detectaron ${maxPages} páginas disponibles`;
+  pageCountHelp.classList.add('visible');
+  pageCountHelp.classList.remove('error', 'detecting');
+}
+
+// Show detection error with retry button
+function showDetectionError() {
+  const pageCountHelp = document.getElementById('pageCountHelp');
+  const pageCountHelpText = document.getElementById('pageCountHelpText');
+  const pageCountIcon = document.getElementById('pageCountIcon');
+  const retryButton = document.getElementById('retryDetection');
+
+  pageCountIcon.innerHTML = '';
+  pageCountHelpText.textContent = 'No se pudo detectar';
+  pageCountHelp.classList.add('visible', 'error');
+  pageCountHelp.classList.remove('detecting');
+  retryButton.style.display = 'inline-flex';
+}
+
+// Utility: sleep function
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 document.getElementById('csv').addEventListener('click', () => exportData('csv'));
 document.getElementById('json').addEventListener('click', () => exportData('json'));
@@ -114,29 +258,29 @@ function exportData(format) {
 function showProgressSection() {
   document.getElementById('progressSection').style.display = 'block';
   document.getElementById('exportSection').style.display = 'none';
-  document.querySelector('.multi-page-section').style.display = 'none';
+  document.getElementById('multiPageSection').style.display = 'none';
 }
 
 function hideProgressSection() {
   document.getElementById('progressSection').style.display = 'none';
   document.getElementById('exportSection').style.display = 'block';
-  document.querySelector('.multi-page-section').style.display = 'block';
+  document.getElementById('multiPageSection').style.display = 'block';
 }
 
 function updateProgressUI(data) {
   const { currentPage, totalPages, totalProducts } = data;
-  
+
   // Update progress text
-  document.getElementById('progressText').textContent = 
-    `Página ${currentPage}/${totalPages} - ${totalProducts} productos encontrados`;
-  
+  document.getElementById('progressText').textContent =
+    `Página ${currentPage}/${totalPages} - ${totalProducts} productos`;
+
   // Update progress bar
   const progressPercent = totalPages > 0 ? (currentPage / totalPages) * 100 : 0;
   document.getElementById('progressFill').style.width = `${progressPercent}%`;
-  
+
   // Update stats
-  document.getElementById('progressPages').textContent = `Páginas: ${currentPage}/${totalPages}`;
-  document.getElementById('progressProducts').textContent = `Productos: ${totalProducts}`;
+  document.getElementById('progressPages').textContent = `${currentPage}/${totalPages} páginas`;
+  document.getElementById('progressProducts').textContent = `${totalProducts} productos`;
 }
 
 function checkExportProgress() {
