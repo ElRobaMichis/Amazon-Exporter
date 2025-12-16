@@ -124,28 +124,20 @@ function crawlPage(tabId) {
           const products = ProductExtractor.extractSimpleProducts(document);
           console.log(`[Content] Extracted ${products.length} products using ProductExtractor.extractSimpleProducts`);
           
-          // Apply additional filtering to remove sponsored products that slipped through
+          // Apply basic validation filtering
           const filtered = products.filter(product => {
             const title = product.title || '';
-            
-            // Check if title contains sponsored labels
-            const hasSponsored = /anuncio\s+patrocinado|sponsored|publicidad|promoted/i.test(title);
-            
-            if (hasSponsored) {
-              console.log(`[Content] Filtering out sponsored product: ${title.substring(0, 50)}...`);
-              return false;
-            }
-            
-            // Additional validation for minimum length and quality
+
+            // Validation for minimum length and quality
             if (title.length < 10) {
               console.log(`[Content] Filtering out short title: ${title}`);
               return false;
             }
-            
+
             return true;
           });
-          
-          console.log(`[Content] After additional filtering: ${filtered.length} products (removed ${products.length - filtered.length} sponsored/invalid)`);
+
+          console.log(`[Content] After validation filtering: ${filtered.length} products (removed ${products.length - filtered.length} invalid)`);
           
           // Normalize product format - include all fields for proper deduplication
           return filtered.map(product => ({

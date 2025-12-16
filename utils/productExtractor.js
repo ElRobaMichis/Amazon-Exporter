@@ -94,6 +94,24 @@ const ProductExtractor = {
     return '';
   },
 
+  // Clean sponsored product sspa redirect URLs to get the actual product URL
+  cleanSspaUrl(href, baseOrigin) {
+    if (href && href.includes('/sspa/click')) {
+      try {
+        const url = new URL(href, baseOrigin);
+        const embeddedUrl = url.searchParams.get('url');
+        if (embeddedUrl) {
+          const decoded = decodeURIComponent(embeddedUrl);
+          if (decoded.startsWith('/')) {
+            return baseOrigin + decoded;
+          }
+          return decoded;
+        }
+      } catch (e) {}
+    }
+    return href;
+  },
+
   // Helper function to extract product name from various sources
   extractProductName(container) {
     // Look for the title container that may have brand and product name separated
@@ -113,16 +131,17 @@ const ProductExtractor = {
         // Try aria-label first as it usually has the complete name
         const ariaLabel = productLink.getAttribute('aria-label');
         if (ariaLabel) {
-          // If we have a brand and it's not already in the aria-label, prepend it
-          if (brand && !ariaLabel.toLowerCase().includes(brand.toLowerCase())) {
-            return `${brand} - ${ariaLabel.trim()}`;
+          const productName = ariaLabel.trim();
+          // Always prepend brand if we have one and product name doesn't start with it
+          if (brand && !productName.toLowerCase().startsWith(brand.toLowerCase())) {
+            return `${brand} - ${productName}`;
           }
-          return ariaLabel.trim();
+          return productName;
         }
-        
+
         // Otherwise use the visible text
         const productText = productLink.textContent.trim();
-        if (productText && brand && !productText.toLowerCase().includes(brand.toLowerCase())) {
+        if (brand && !productText.toLowerCase().startsWith(brand.toLowerCase())) {
           return `${brand} - ${productText}`;
         }
         return productText || '';
@@ -188,7 +207,6 @@ const ProductExtractor = {
       // Shipping and deals
       /^(free shipping|envío gratis)/i,
       /^(prime|amazon prime)/i,
-      /^(sponsored|patrocinado|publicidad|promoted)/i,
       /^(best seller|más vendido)/i,
       /^(amazon's choice|amazon choice)/i,
       /^(limited time deal|oferta por tiempo limitado)/i,
@@ -324,29 +342,31 @@ const ProductExtractor = {
 
     // Extract product link - try multiple strategies
     let link = '';
+    const domain = typeof window !== 'undefined' ? window.location.origin : 'https://www.amazon.com';
 
     // Strategy 1: Look for link containing h2 in title section (common Amazon layout)
     const titleSection = container.querySelector('div[data-cy="title-recipe"], .s-title-instructions-style');
     if (titleSection) {
-      const titleLink = titleSection.querySelector('a.a-link-normal[href*="/dp/"], a[href*="/dp/"]');
+      // Look for direct /dp/ links or sspa sponsored links
+      const titleLink = titleSection.querySelector('a.a-link-normal[href*="/dp/"], a[href*="/dp/"], a[href*="/sspa/click"]');
       if (titleLink?.href) {
-        link = titleLink.href;
+        link = this.cleanSspaUrl(titleLink.href, domain);
       }
     }
 
     // Strategy 2: Look for h2 > a or a > h2 patterns
     if (!link) {
-      const h2Link = container.querySelector('h2 a[href*="/dp/"]');
+      const h2Link = container.querySelector('h2 a[href*="/dp/"], h2 a[href*="/sspa/click"]');
       if (h2Link?.href) {
-        link = h2Link.href;
+        link = this.cleanSspaUrl(h2Link.href, domain);
       }
     }
 
-    // Strategy 3: Look for any product link with /dp/ pattern
+    // Strategy 3: Look for any product link with /dp/ or sspa pattern
     if (!link) {
-      const anyProductLink = container.querySelector('a.a-link-normal[href*="/dp/"]');
+      const anyProductLink = container.querySelector('a.a-link-normal[href*="/dp/"], a.a-link-normal[href*="/sspa/click"]');
       if (anyProductLink?.href) {
-        link = anyProductLink.href;
+        link = this.cleanSspaUrl(anyProductLink.href, domain);
       }
     }
 
@@ -354,8 +374,6 @@ const ProductExtractor = {
     if (!link) {
       const asin = container.getAttribute('data-asin');
       if (asin) {
-        // Detect Amazon domain from current page
-        const domain = typeof window !== 'undefined' ? window.location.origin : 'https://www.amazon.com';
         link = `${domain}/dp/${asin}`;
       }
     }
