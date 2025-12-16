@@ -754,6 +754,7 @@
     }
 
     /* ==================== RESPONSIVE BREAKPOINTS ==================== */
+    /* Optimized for Mac screens: 1280px, 1440px, 1512px, 1680px, 1728px+ */
 
     /* Small tablets and large phones (480px+) */
     @media (min-width: 480px) {
@@ -818,27 +819,32 @@
       .score-bar {
         min-width: 80px;
       }
+
+      .method-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+      }
     }
 
-    /* Small desktops (900px+) - 16:9 starts looking good */
+    /* Small desktops (900px+) */
     @media (min-width: 900px) {
       .header {
-        padding: 28px 40px 32px;
+        padding: 24px 32px 28px;
       }
 
       .logo {
-        width: 52px;
-        height: 52px;
-        font-size: 26px;
+        width: 48px;
+        height: 48px;
+        font-size: 24px;
       }
 
       .header-text h1 {
-        font-size: 24px;
+        font-size: 22px;
         margin-bottom: 4px;
       }
 
       .header-text .subtitle {
-        font-size: 14px;
+        font-size: 13px;
       }
 
       .header-badge {
@@ -847,13 +853,13 @@
       }
 
       .main-content {
-        padding: 28px 40px;
+        padding: 24px 32px;
       }
 
       .container {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 24px;
+        gap: 20px;
       }
 
       .container > .card:first-child {
@@ -869,13 +875,13 @@
       }
 
       .card {
-        padding: 22px;
+        padding: 20px;
       }
 
       .card-icon {
-        width: 36px;
-        height: 36px;
-        font-size: 18px;
+        width: 34px;
+        height: 34px;
+        font-size: 16px;
       }
 
       .card-title {
@@ -883,80 +889,83 @@
       }
 
       .stats-grid {
-        gap: 16px;
+        gap: 14px;
       }
 
       .stat-item {
-        padding: 16px;
+        padding: 14px;
       }
 
       .stat-label {
-        font-size: 11px;
+        font-size: 10px;
       }
 
       .stat-value {
-        font-size: 22px;
+        font-size: 20px;
       }
 
       .method-grid {
         grid-template-columns: repeat(3, 1fr);
-        gap: 14px;
+        gap: 12px;
       }
 
       .method-card {
-        padding: 18px;
+        padding: 16px;
       }
 
       .method-icon {
-        font-size: 30px;
+        font-size: 26px;
+        margin-bottom: 6px;
       }
 
       .method-name {
-        font-size: 15px;
+        font-size: 14px;
       }
 
       .method-desc {
-        font-size: 12px;
+        font-size: 11px;
+        margin-bottom: 6px;
       }
 
       .method-badge {
-        font-size: 10px;
-        padding: 5px 10px;
+        font-size: 9px;
+        padding: 4px 8px;
       }
 
       .preview-table {
-        font-size: 13px;
+        font-size: 12px;
       }
 
       .preview-table th,
       .preview-table td {
-        padding: 14px 16px;
+        padding: 12px 14px;
       }
 
       .product-name {
-        max-width: 280px;
+        max-width: 220px;
       }
 
       .score-bar {
-        min-width: 120px;
-        height: 8px;
+        min-width: 100px;
+        height: 7px;
       }
 
       .score-value {
-        font-size: 14px;
+        font-size: 13px;
       }
 
       button {
-        padding: 16px 24px;
-        font-size: 15px;
+        padding: 14px 20px;
+        font-size: 14px;
       }
     }
 
-    /* Large desktops (1100px+) - Full 16:9 layout */
+    /* MacBook Air / Medium desktops (1100px+) */
     @media (min-width: 1100px) {
       .container {
-        grid-template-columns: 1.2fr 1fr;
+        grid-template-columns: 1.15fr 1fr;
         grid-template-rows: auto auto auto auto;
+        gap: 22px;
       }
 
       .container > .card:first-child {
@@ -986,21 +995,186 @@
 
       .method-grid {
         grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .method-card {
+        padding: 14px;
+      }
+
+      .method-icon {
+        font-size: 24px;
+        margin-bottom: 6px;
+      }
+
+      .method-name {
+        font-size: 13px;
+        margin-bottom: 3px;
+      }
+
+      .method-desc {
+        font-size: 10px;
+        line-height: 1.35;
+        margin-bottom: 6px;
       }
 
       .product-name {
-        max-width: 350px;
+        max-width: 280px;
       }
 
       .score-bar {
-        min-width: 150px;
+        min-width: 120px;
       }
     }
 
-    /* Full HD screens (1440px+) */
-    @media (min-width: 1440px) {
+    /* MacBook Air 13" / Standard Mac displays (1280px+) */
+    @media (min-width: 1280px) {
+      .header {
+        padding: 26px 40px 30px;
+      }
+
+      .logo {
+        width: 50px;
+        height: 50px;
+        font-size: 25px;
+      }
+
+      .header-text h1 {
+        font-size: 24px;
+      }
+
+      .header-text .subtitle {
+        font-size: 14px;
+      }
+
+      .main-content {
+        padding: 28px 40px;
+      }
+
       .container {
-        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        max-width: 1400px;
+      }
+
+      .card {
+        padding: 22px;
+      }
+
+      .stats-grid {
+        gap: 16px;
+      }
+
+      .stat-item {
+        padding: 16px;
+      }
+
+      .stat-value {
+        font-size: 22px;
+      }
+
+      .method-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .method-card {
+        padding: 16px;
+      }
+
+      .method-icon {
+        font-size: 28px;
+        margin-bottom: 8px;
+      }
+
+      .method-name {
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+
+      .method-desc {
+        font-size: 11px;
+        line-height: 1.4;
+        margin-bottom: 8px;
+      }
+
+      .method-badge {
+        font-size: 10px;
+        padding: 5px 10px;
+      }
+
+      .preview-table {
+        font-size: 13px;
+      }
+
+      .preview-table th,
+      .preview-table td {
+        padding: 14px 16px;
+      }
+
+      .product-name {
+        max-width: 320px;
+      }
+
+      .score-bar {
+        min-width: 140px;
+        height: 8px;
+      }
+
+      .score-value {
+        font-size: 14px;
+        min-width: 45px;
+      }
+
+      button {
+        padding: 16px 24px;
+        font-size: 15px;
+      }
+    }
+
+    /* MacBook Pro 14" and larger (1440px+) */
+    @media (min-width: 1440px) {
+      .header {
+        padding: 28px 48px 32px;
+      }
+
+      .logo {
+        width: 52px;
+        height: 52px;
+        font-size: 26px;
+      }
+
+      .header-text h1 {
+        font-size: 26px;
+      }
+
+      .header-text .subtitle {
+        font-size: 14px;
+      }
+
+      .main-content {
+        padding: 32px 48px;
+      }
+
+      .container {
+        max-width: 1500px;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 26px;
+      }
+
+      .card {
+        padding: 24px;
+      }
+
+      .stats-grid {
+        gap: 18px;
+      }
+
+      .stat-item {
+        padding: 18px;
+      }
+
+      .stat-value {
+        font-size: 24px;
       }
 
       .method-grid {
@@ -1009,22 +1183,46 @@
       }
 
       .method-card {
-        padding: 20px;
+        padding: 18px;
+      }
+
+      .method-icon {
+        font-size: 30px;
+        margin-bottom: 10px;
+      }
+
+      .method-name {
+        font-size: 15px;
+        margin-bottom: 5px;
+      }
+
+      .method-desc {
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+
+      .preview-table {
+        font-size: 14px;
+      }
+
+      .preview-table th,
+      .preview-table td {
+        padding: 16px 18px;
       }
 
       .product-name {
-        max-width: 400px;
+        max-width: 380px;
+      }
+
+      .score-bar {
+        min-width: 160px;
       }
     }
 
-    /* Extra large screens (1400px+) */
-    @media (min-width: 1400px) {
+    /* MacBook Pro 16" / Large displays (1680px+) */
+    @media (min-width: 1680px) {
       .header {
         padding: 32px 60px 36px;
-      }
-
-      .main-content {
-        padding: 32px 60px;
       }
 
       .logo {
@@ -1041,7 +1239,12 @@
         font-size: 15px;
       }
 
+      .main-content {
+        padding: 36px 60px;
+      }
+
       .container {
+        max-width: 1700px;
         gap: 28px;
       }
 
@@ -1049,29 +1252,52 @@
         padding: 26px;
       }
 
+      .card-icon {
+        width: 38px;
+        height: 38px;
+        font-size: 18px;
+      }
+
+      .stats-grid {
+        gap: 20px;
+      }
+
+      .stat-item {
+        padding: 20px;
+      }
+
       .stat-value {
         font-size: 26px;
       }
 
+      .method-grid {
+        gap: 18px;
+      }
+
       .method-card {
-        padding: 22px;
+        padding: 20px;
       }
 
       .method-icon {
-        font-size: 34px;
+        font-size: 32px;
       }
 
       .method-name {
         font-size: 16px;
       }
 
-      .preview-table {
-        font-size: 14px;
+      .method-desc {
+        font-size: 12px;
+      }
+
+      .method-badge {
+        font-size: 10px;
+        padding: 5px 12px;
       }
 
       .preview-table th,
       .preview-table td {
-        padding: 16px 20px;
+        padding: 18px 20px;
       }
 
       .product-name {
@@ -1083,33 +1309,31 @@
       }
     }
 
-    /* Ultra-wide screens (1800px+) */
-    @media (min-width: 1800px) {
+    /* Ultra-wide and iMac displays (1920px+) */
+    @media (min-width: 1920px) {
       .header-content {
-        max-width: 1800px;
+        max-width: 1900px;
       }
 
       .container {
-        max-width: 1800px;
-        grid-template-columns: 1fr 1fr;
+        max-width: 1900px;
         gap: 32px;
       }
 
       .method-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-      }
-
-      .method-card {
-        padding: 24px;
-      }
-
-      .stats-grid {
         gap: 20px;
       }
 
+      .method-card {
+        padding: 22px;
+      }
+
+      .stats-grid {
+        gap: 22px;
+      }
+
       .stat-item {
-        padding: 20px;
+        padding: 22px;
       }
 
       .product-name {
