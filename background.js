@@ -22,6 +22,144 @@ let isCancelled = false;
 let firstPageUrl = null;
 let crawlTabId = null;
 
+// === KEEP-ALIVE MECHANISM FOR MV3 SERVICE WORKER ===
+let keepAliveInterval = null;
+let crawlActive = false;
+
+function startKeepAlive() {
+  if (keepAliveInterval) return;
+
+  crawlActive = true;
+
+  // Chrome alarms API as backup keep-alive (minimum 0.5 minutes)
+  chrome.alarms.create('keepAlive', { periodInMinutes: 0.5 });
+
+  // More aggressive keep-alive using setInterval
+  // This pings chrome.runtime to keep the worker active
+  keepAliveInterval = setInterval(() => {
+    if (crawlActive) {
+      chrome.runtime.getPlatformInfo(() => {
+        console.log('[Background] Keep-alive ping at page', currentPageNumber);
+      });
+    }
+  }, 25000); // Every 25 seconds (under 30s suspension threshold)
+
+  console.log('[Background] Keep-alive started');
+}
+
+function stopKeepAlive() {
+  crawlActive = false;
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+  chrome.alarms.clear('keepAlive');
+  console.log('[Background] Keep-alive stopped');
+}
+
+// Alarm listener as backup keep-alive
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepAlive' && crawlActive) {
+    console.log('[Background] Alarm keep-alive triggered at page', currentPageNumber);
+  }
+});
+
+// === CRAWL STATE TRACKING FOR DEBUGGING ===
+let crawlState = {
+  startTime: null,
+  lastPageTime: null,
+  errors: [],
+  pagesProcessed: 0,
+  stopReason: null
+};
+
+function resetCrawlState() {
+  crawlState = {
+    startTime: Date.now(),
+    lastPageTime: Date.now(),
+    errors: [],
+    pagesProcessed: 0,
+    stopReason: null
+  };
+}
+
+function logCrawlError(type, details) {
+  const error = {
+    type,
+    details,
+    timestamp: Date.now(),
+    page: currentPageNumber,
+    productsCollected: collected.length
+  };
+  crawlState.errors.push(error);
+  console.error(`[Background] Crawl error (${type}):`, details);
+}
+
+// === CENTRALIZED LISTENER MANAGEMENT ===
+let activeListeners = {
+  onUpdated: null
+};
+
+function cleanupListeners() {
+  if (activeListeners.onUpdated) {
+    chrome.tabs.onUpdated.removeListener(activeListeners.onUpdated);
+    activeListeners.onUpdated = null;
+    console.log('[Background] Cleaned up onUpdated listener');
+  }
+}
+
+// === WATCHDOG TIMER FOR STALL DETECTION ===
+let watchdogTimer = null;
+const WATCHDOG_TIMEOUT = 60000; // 60 seconds without progress = stalled
+
+function resetWatchdog() {
+  if (watchdogTimer) {
+    clearTimeout(watchdogTimer);
+  }
+  watchdogTimer = setTimeout(() => {
+    if (crawlActive && !isDownloading) {
+      console.error('[Background] WATCHDOG: Crawl appears stalled!');
+      logCrawlError('watchdog_timeout', {
+        lastPageTime: crawlState.lastPageTime,
+        timeSinceLastPage: Date.now() - crawlState.lastPageTime,
+        currentPage: currentPageNumber,
+        productsCollected: collected.length
+      });
+
+      // Graceful shutdown with partial results
+      crawlState.stopReason = 'watchdog_timeout';
+      showProgressNotification('error', {
+        error: `Extraccion detenida en pagina ${currentPageNumber}. ${collected.length} productos guardados.`
+      });
+      finishAndDownload();
+    }
+  }, WATCHDOG_TIMEOUT);
+}
+
+function stopWatchdog() {
+  if (watchdogTimer) {
+    clearTimeout(watchdogTimer);
+    watchdogTimer = null;
+  }
+}
+
+// === PAGINATION CONFIGURATION WITH RETRY ===
+const PAGINATION_CONFIG = {
+  maxRetries: 3,
+  retryDelays: [0, 500, 1000],
+  selectors: [
+    'a.s-pagination-next',
+    'ul.a-pagination li.a-last a',
+    'a[aria-label*="Next"]',
+    'a[aria-label*="Siguiente"]',
+    'a[aria-label*="next"]',
+    'span.s-pagination-next:not(.s-pagination-disabled)',
+    '.a-last a',
+    'a.s-pagination-button[aria-label*="page"]',
+    '.s-pagination-container a:last-child'
+  ]
+};
+
 console.log('[Background] Background script initialized');
 
 // Test if the service worker is responding
@@ -39,6 +177,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'cancelExport') {
     console.log('[Background] Export cancellation requested');
     isCancelled = true;
+    crawlState.stopReason = 'user_cancelled';
+    cleanupListeners();
+    stopKeepAlive();
+    stopWatchdog();
     sendResponse({ success: true });
     return true;
   }
@@ -80,13 +222,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       collected = [];
       isDownloading = false;
       crawlTabId = tab.id;
-      
-      // Progress tracking will be handled via popup and notifications
-      
+
+      // Reset crawl state for debugging
+      resetCrawlState();
+
+      // Start keep-alive to prevent service worker suspension
+      startKeepAlive();
+
+      // Start watchdog timer
+      resetWatchdog();
+
       // Start progress notification system
       showProgressNotification('start');
       updateBadgeText(0, totalPagesToExport);
-      
+
       // Start the crawl
       crawlPage(tab.id);
     });
@@ -169,11 +318,15 @@ function crawlPage(tabId) {
   }).then(res => {
       if (chrome.runtime.lastError) {
         console.error('[Background] Runtime error during extraction:', chrome.runtime.lastError);
+        logCrawlError('extraction_runtime', chrome.runtime.lastError.message);
+        crawlState.stopReason = 'extraction_runtime_error';
         finishAndDownload();
         return;
       }
       if (!res || !res[0] || !res[0].result) {
         console.error('[Background] No result from extraction script');
+        logCrawlError('extraction_empty', 'No result from extraction script');
+        crawlState.stopReason = 'extraction_empty';
         finishAndDownload();
         return;
       }
@@ -195,34 +348,66 @@ function crawlPage(tabId) {
       console.log(`[Background] Added ${newProducts.length} new products (${pageProducts.length - newProducts.length} duplicates skipped)`);
       collected = collected.concat(newProducts);
 
+      // Update crawl state and reset watchdog on successful page
+      crawlState.pagesProcessed++;
+      crawlState.lastPageTime = Date.now();
+      resetWatchdog();
+
       chrome.scripting.executeScript({
         target: { tabId },
-        func: () => {
-          // More comprehensive pagination selector
-          const btn = document.querySelector('a.s-pagination-next') ||
-                     document.querySelector('ul.a-pagination li.a-last a') ||
-                     document.querySelector('a[aria-label*="Next"]') ||
-                     document.querySelector('a[aria-label*="Siguiente"]') ||
-                     document.querySelector('span.s-pagination-next') ||
-                     document.querySelector('.a-last a');
-          
-          const href = btn?.href;
-          
-          // Make relative URLs absolute
-          if (href && !href.startsWith('http')) {
-            const currentUrl = new URL(window.location.href);
-            const absoluteUrl = new URL(href, currentUrl.origin).href;
-            return absoluteUrl;
+        func: (selectors) => {
+          // Try each selector in order
+          for (const selector of selectors) {
+            const btn = document.querySelector(selector);
+            if (btn) {
+              // Check if it's disabled
+              if (btn.classList.contains('s-pagination-disabled') ||
+                  btn.classList.contains('a-disabled') ||
+                  btn.hasAttribute('disabled')) {
+                continue;
+              }
+
+              const href = btn.href || btn.getAttribute('href');
+              if (href && href !== '#') {
+                // Make relative URLs absolute
+                if (!href.startsWith('http')) {
+                  const currentUrl = new URL(window.location.href);
+                  return new URL(href, currentUrl.origin).href;
+                }
+                return href;
+              }
+            }
           }
-          
-          return href || null;
-        }
+
+          // Fallback: find next page number link based on current page
+          const currentPageEl = document.querySelector('.s-pagination-selected, .a-selected');
+          if (currentPageEl) {
+            const currentPage = parseInt(currentPageEl.textContent.trim(), 10);
+            if (!isNaN(currentPage)) {
+              const nextPageLink = document.querySelector(
+                `a.s-pagination-button[aria-label*="${currentPage + 1}"], ` +
+                `a[aria-label*="page ${currentPage + 1}"], ` +
+                `a[aria-label*="página ${currentPage + 1}"]`
+              );
+              if (nextPageLink?.href) {
+                return nextPageLink.href;
+              }
+            }
+          }
+
+          return null;
+        },
+        args: [PAGINATION_CONFIG.selectors]
       }).then(nextRes => {
         if (chrome.runtime.lastError) {
+          logCrawlError('pagination_runtime', chrome.runtime.lastError.message);
+          crawlState.stopReason = 'pagination_runtime_error';
           finishAndDownload();
           return;
         }
         if (!nextRes || !nextRes[0]) {
+          logCrawlError('pagination_empty', 'No pagination result');
+          crawlState.stopReason = 'pagination_empty';
           finishAndDownload();
           return;
         }
@@ -230,37 +415,57 @@ function crawlPage(tabId) {
         if (nextUrl && pagesRemaining > 0 && !isCancelled) {
           chrome.tabs.update(tabId, { url: nextUrl }, () => {
             if (chrome.runtime.lastError) {
+              logCrawlError('navigation_error', chrome.runtime.lastError.message);
+              crawlState.stopReason = 'navigation_error';
               finishAndDownload();
               return;
             }
-            
+
+            // Clean up any existing listener first
+            cleanupListeners();
+
             let navigationComplete = false;
-            
+
             const listener = (updatedId, info) => {
               if (updatedId === tabId && info.status === 'complete' && !navigationComplete && !isCancelled) {
                 navigationComplete = true;
-                chrome.tabs.onUpdated.removeListener(listener);
+                cleanupListeners();
                 setTimeout(() => crawlPage(tabId), 1000);
               }
             };
+
+            activeListeners.onUpdated = listener;
             chrome.tabs.onUpdated.addListener(listener);
-            
-            // Add timeout fallback in case page doesn't load properly
+
+            // Timeout fallback in case page doesn't load properly
             setTimeout(() => {
               if (!navigationComplete) {
                 navigationComplete = true;
-                chrome.tabs.onUpdated.removeListener(listener);
+                cleanupListeners();
+                console.log('[Background] Page load timeout, continuing anyway');
                 crawlPage(tabId);
               }
             }, 10000);
           });
         } else {
+          // Determine why we're stopping
+          if (!nextUrl) {
+            crawlState.stopReason = pagesRemaining > 0 ? 'no_next_page_found' : 'page_limit_reached';
+          } else if (pagesRemaining <= 0) {
+            crawlState.stopReason = 'page_limit_reached';
+          } else if (isCancelled) {
+            crawlState.stopReason = 'user_cancelled';
+          }
           finishAndDownload();
         }
       }).catch(err => {
+        logCrawlError('pagination_exception', err.message || String(err));
+        crawlState.stopReason = 'pagination_exception';
         finishAndDownload();
       });
   }).catch(err => {
+    logCrawlError('extraction_exception', err.message || String(err));
+    crawlState.stopReason = 'extraction_exception';
     finishAndDownload();
   });
 }
@@ -376,12 +581,39 @@ function updateProgress(tabId) {
 }
 
 function finishAndDownload() {
+  // Stop all timers and listeners first
+  stopKeepAlive();
+  cleanupListeners();
+  stopWatchdog();
+
   if (isDownloading) {
     console.log('[Background] Download already in progress, skipping');
     return; // Prevent multiple downloads
   }
   isDownloading = true;
-  
+
+  // Log crawl summary
+  const duration = Date.now() - (crawlState.startTime || Date.now());
+  console.log('[Background] === CRAWL SUMMARY ===');
+  console.log(`[Background] Duration: ${Math.round(duration / 1000)}s`);
+  console.log(`[Background] Pages processed: ${crawlState.pagesProcessed}`);
+  console.log(`[Background] Products collected: ${collected.length}`);
+  console.log(`[Background] Stop reason: ${crawlState.stopReason || 'completed_normally'}`);
+  console.log(`[Background] Errors: ${crawlState.errors.length}`);
+  if (crawlState.errors.length > 0) {
+    console.log('[Background] Error log:', crawlState.errors);
+  }
+
+  // Store debug info for later analysis
+  chrome.storage.local.set({
+    lastCrawlDebug: {
+      ...crawlState,
+      duration,
+      totalProducts: collected.length,
+      completedAt: Date.now()
+    }
+  });
+
   console.log(`[Background] Finishing crawl. Total products collected: ${collected.length}`);
   
   try {
