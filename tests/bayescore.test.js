@@ -310,6 +310,36 @@ describe('Value Score', () => {
     bayesUtils.addScore(products, 'value');
     expect(products[0]).toHaveProperty('bayescore');
   });
+
+  test('Value score favors products with more reviews (same price and rating)', () => {
+    // Use moderate ratings and higher prices to avoid hitting the 5.0 cap
+    const products = [
+      { rating: 3.8, reviews: 5000, price: 100 },
+      { rating: 3.8, reviews: 50, price: 100 }
+    ];
+
+    addValueScore(products);
+
+    // Product with more reviews should score higher (proven popularity bonus)
+    expect(parseFloat(products[0].bayescore)).toBeGreaterThan(parseFloat(products[1].bayescore));
+  });
+
+  test('Value score provides stronger price differentiation', () => {
+    // Use lower ratings and higher base price to avoid hitting the 5.0 cap
+    const products = [
+      { rating: 3.0, reviews: 100, price: 50 },
+      { rating: 3.0, reviews: 100, price: 200 }
+    ];
+
+    addValueScore(products);
+
+    // Cheaper product should score higher (additive formula gives meaningful differentiation)
+    const cheapScore = parseFloat(products[0].bayescore);
+    const expensiveScore = parseFloat(products[1].bayescore);
+    // With additive price adjustment: cheaper gets positive bonus, expensive gets penalty
+    expect(cheapScore).toBeGreaterThan(expensiveScore);
+    expect(cheapScore - expensiveScore).toBeGreaterThan(0.5); // At least 0.5 point difference
+  });
 });
 
 // Premium Score tests
@@ -400,10 +430,15 @@ describe('Premium Score', () => {
 // Price-based method comparison tests
 describe('Price-Based Method Comparison', () => {
   test('Value and Premium methods produce different rankings', () => {
+    // Use a larger dataset so median price is more representative
+    // Median price will be around $100-150, making $20 clearly the best value
     const testData = [
       { rating: 4.5, reviews: 100, price: 500 },  // Expensive, many reviews
-      { rating: 4.5, reviews: 100, price: 20 },   // Cheap, many reviews
-      { rating: 4.5, reviews: 30, price: 800 }    // Very expensive, fewer reviews
+      { rating: 4.5, reviews: 100, price: 20 },   // Cheap, many reviews - best value
+      { rating: 4.5, reviews: 30, price: 800 },   // Very expensive, fewer reviews
+      { rating: 4.2, reviews: 80, price: 100 },   // Medium price
+      { rating: 4.3, reviews: 60, price: 150 },   // Medium price
+      { rating: 4.1, reviews: 40, price: 75 }     // Lower-medium price
     ];
 
     const valueData = JSON.parse(JSON.stringify(testData));
@@ -416,14 +451,10 @@ describe('Price-Based Method Comparison', () => {
     const valueSorted = [...valueData].sort((a, b) => parseFloat(b.bayescore) - parseFloat(a.bayescore));
     const premiumSorted = [...premiumData].sort((a, b) => parseFloat(b.bayescore) - parseFloat(a.bayescore));
 
-    // Value should rank the cheap product first (best value)
+    // Value should rank the cheap product ($20) first (best value)
     expect(valueSorted[0].price).toBe(20);
 
     // Premium should be more favorable to expensive products
-    // The $500 and $800 products should rank higher in premium than in value
-    const expensiveValueRank = valueData.findIndex(p => p.price === 500);
-    const expensivePremiumRank = premiumData.findIndex(p => p.price === 500);
-
     // In premium scoring, expensive products should have relatively higher scores
     expect(parseFloat(premiumData.find(p => p.price === 500).bayescore))
       .toBeGreaterThanOrEqual(parseFloat(valueData.find(p => p.price === 500).bayescore) * 0.5);

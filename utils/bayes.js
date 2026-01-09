@@ -46,11 +46,23 @@
   function calcEnhancedParams(products) {
     const ratings = products.map(p => parseFloat(p.rating)).filter(r => !isNaN(r) && r > 0);
     const counts = products.map(p => parseInt(p.reviews, 10) || 0).filter(c => c > 0);
+    const prices = products.map(p => parseFloat(p.price) || 0).filter(p => p > 0);
 
     const C = getMedian(ratings) || 3.5;
     const m = Math.max(getPercentile(counts, 0.25), 10); // Minimum threshold of 10
 
-    return { C, m };
+    // Calculate max reviews for review volume bonus (used by value score)
+    let maxReviews = 1;
+    for (let i = 0; i < counts.length; i++) {
+      if (counts[i] > maxReviews) maxReviews = counts[i];
+    }
+
+    // Calculate 25th percentile price for value scoring (aggressively favors cheap products)
+    // Using 25th percentile means only the cheapest 25% get bonuses, 75% get penalties
+    const p25Price = prices.length > 0 ? getPercentile(prices, 0.25) : 100;
+    const refPrice = Math.max(p25Price, 1); // Ensure minimum of 1 to avoid division issues
+
+    return { C, m, maxReviews, refPrice };
   }
 
   // Original Bayesian score
@@ -177,11 +189,15 @@
   }
 
   // Value Score: Quality-per-dollar scoring for budget shoppers
-  // Cheaper products with same quality get higher scores
+  // Favors products with: many reviews, high ratings, low price
+  // Two-phase: calculate raw scores, then normalize to 0-5 range
   function addValueScore(products) {
-    const { C, m } = calcEnhancedParams(products);
+    const { C, m, maxReviews, refPrice } = calcEnhancedParams(products);
+    const refOffset = refPrice * 0.1;
 
-    products.forEach(p => {
+    // Phase 1: Calculate raw scores (no capping)
+    const rawScores = [];
+    products.forEach((p, idx) => {
       const R = parseFloat(p.rating) || 0;
       const v = parseInt(p.reviews, 10) || 0;
       const price = parseFloat(p.price) || 0;
@@ -201,22 +217,49 @@
         confidenceFactor = 0.5 + (v / 10);
       }
 
-      const quality = bayesian * ratingMultiplier * confidenceFactor;
+      // Review volume bonus
+      const reviewBonus = v > 0
+        ? 1 + 0.3 * (Math.log10(v + 1) / Math.log10(maxReviews + 1))
+        : 1;
 
-      // Value calculation
-      if (price <= 0) {
-        // No price: use quality score directly
-        p.bayescore = Math.max(0, Math.min(5, quality)).toFixed(3);
-        return;
+      const quality = bayesian * ratingMultiplier * confidenceFactor * reviewBonus;
+
+      // Price adjustment (no capping yet)
+      let rawScore = quality;
+      if (price > 0) {
+        const priceRatio = refPrice / (price + refOffset);
+        const priceAdjustment = Math.log(priceRatio) * 0.8;
+        rawScore = quality + priceAdjustment;
       }
 
-      // Price bonus: cheaper products get a boost
-      // Formula: (100 / (price + 10))^0.3 gives ~1.6 at $10, ~1.0 at $100, ~0.6 at $1000
-      const priceBonus = Math.pow(100 / (price + 10), 0.3);
-      const valueScore = quality * priceBonus;
-
-      p.bayescore = Math.max(0, Math.min(5, valueScore)).toFixed(3);
+      rawScores.push({ idx, rawScore, hasPrice: price > 0 });
     });
+
+    // Phase 2: Normalize to 0-5 range based on actual min/max
+    const scoresWithPrice = rawScores.filter(s => s.hasPrice);
+    if (scoresWithPrice.length === 0) {
+      // No products with price, just use quality scores
+      products.forEach(p => {
+        p.bayescore = Math.max(0, Math.min(5, parseFloat(p.rating) || 0)).toFixed(3);
+      });
+      return products;
+    }
+
+    const minScore = Math.min(...scoresWithPrice.map(s => s.rawScore));
+    const maxScore = Math.max(...scoresWithPrice.map(s => s.rawScore));
+    const range = maxScore - minScore || 1;
+
+    rawScores.forEach(({ idx, rawScore, hasPrice }) => {
+      if (hasPrice) {
+        // Normalize to 0-5 range
+        const normalized = ((rawScore - minScore) / range) * 5;
+        products[idx].bayescore = Math.max(0, Math.min(5, normalized)).toFixed(3);
+      } else {
+        // No price: use quality score directly
+        products[idx].bayescore = Math.max(0, Math.min(5, rawScore)).toFixed(3);
+      }
+    });
+
     return products;
   }
 
@@ -341,19 +384,29 @@
       }
 
       case 'value': {
-        const { C: vC, m: vM } = cachedEnhancedParams;
+        const { C: vC, m: vM, refPrice: vRefPrice } = cachedEnhancedParams;
+        const vRef = vRefPrice || 100;
+        const vRefOffset = vRef * 0.1;
         const vR = parseFloat(tempProduct.rating) || 0;
         const vV = parseInt(tempProduct.reviews, 10) || 0;
         const vPrice = parseFloat(tempProduct.price) || 0;
         const vBayesian = ((vV / (vV + vM)) * vR + (vM / (vV + vM)) * vC) || 0;
         let vRatingMult = vR < 3.0 ? Math.pow(vR / 3, 2) : 1.0;
         let vConfidence = vV < 5 ? 0.5 + (vV / 10) : 1.0;
-        const vQuality = vBayesian * vRatingMult * vConfidence;
+        // Review volume bonus: reward products with many reviews
+        const vReviewBonus = vV > 0
+          ? 1 + 0.3 * (Math.log10(vV + 1) / Math.log10(cachedMaxReviews + 1))
+          : 1;
+        // Cap quality at 5 BEFORE price adjustment
+        const vRawQuality = vBayesian * vRatingMult * vConfidence * vReviewBonus;
+        const vQuality = Math.min(5, vRawQuality);
         if (vPrice <= 0) {
-          tempProduct.bayescore = Math.max(0, Math.min(5, vQuality)).toFixed(3);
+          tempProduct.bayescore = Math.max(0, vQuality).toFixed(3);
         } else {
-          const vPriceBonus = Math.pow(100 / (vPrice + 10), 0.3);
-          tempProduct.bayescore = Math.max(0, Math.min(5, vQuality * vPriceBonus)).toFixed(3);
+          // Additive price adjustment using 25th percentile as reference
+          const vPriceRatio = vRef / (vPrice + vRefOffset);
+          const vPriceAdjustment = Math.log(vPriceRatio) * 0.8;
+          tempProduct.bayescore = Math.max(0, Math.min(5, vQuality + vPriceAdjustment)).toFixed(3);
         }
         break;
       }

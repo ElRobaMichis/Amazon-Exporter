@@ -1,4 +1,6 @@
 // bayes_selection.js - Handles Bayesian score selection after multi-page extraction
+// VERSION: 3.1 - Fixed: inline function returns raw scores for normalization
+console.log('[BayesSelection] CODE VERSION 3.1 - Raw scores + normalization');
 
 let extractedProducts = [];
 let productStats = {};
@@ -9,6 +11,7 @@ let sampleProducts = [];
 let cachedParams = null;
 let cachedEnhancedParams = null;
 let cachedMaxReviews = 1;
+let cachedRefPrice = 100; // 25th percentile price for value scoring
 
 // Method descriptions for info panel
 const methodDescriptions = {
@@ -115,16 +118,22 @@ function calculateStatsAndCacheParams() {
 
     const ratings = [];
     const reviewCounts = [];
+    const prices = [];
 
     for (let i = 0; i < n; i++) {
       const p = extractedProducts[i];
       const rating = parseFloat(p.rating) || 0;
       const reviews = parseInt(p.reviews, 10) || 0;
+      const price = parseFloat(p.price) || 0;
 
       if (rating > 0) {
         ratings.push(rating);
         sumRating += rating;
         validRatingCount++;
+      }
+
+      if (price > 0) {
+        prices.push(price);
       }
 
       reviewCounts.push(reviews);
@@ -178,9 +187,18 @@ function calculateStatsAndCacheParams() {
 
     cachedMaxReviews = maxReviews || 1;
 
+    // Calculate 25th percentile price for value scoring (aggressively favors cheap products)
+    if (prices.length > 0) {
+      const sortedPrices = prices.slice().sort((a, b) => a - b);
+      cachedRefPrice = Math.max(getPercentileFromSorted(sortedPrices, 0.25) || 100, 1);
+    } else {
+      cachedRefPrice = 100;
+    }
+
     console.log('[BayesSelection] Stats:', productStats);
     console.log('[BayesSelection] Cached params:', cachedParams);
     console.log('[BayesSelection] Enhanced params:', cachedEnhancedParams);
+    console.log('[BayesSelection] Reference price (25th percentile):', cachedRefPrice);
 
     // Display stats in UI
     document.getElementById('totalProducts').textContent = productStats.total.toLocaleString();
@@ -396,6 +414,19 @@ function generatePreview() {
       allProductsWithScore = allProductsWithScore.filter(p => p.price > 0);
     }
 
+    // For value method, normalize scores to 0-5 range (prevents all scores capping at 5.0)
+    if (currentMethod === 'value' && allProductsWithScore.length > 0) {
+      const scores = allProductsWithScore.map(p => parseFloat(p.score));
+      const minScore = Math.min(...scores);
+      const maxScore = Math.max(...scores);
+      const range = maxScore - minScore || 1;
+
+      allProductsWithScore = allProductsWithScore.map(p => ({
+        ...p,
+        score: (((parseFloat(p.score) - minScore) / range) * 5).toFixed(3)
+      }));
+    }
+
     // Count products without price for info message
     const productsWithoutPrice = extractedProducts.filter(p => !(parseFloat(p.price) > 0)).length;
 
@@ -508,6 +539,10 @@ function calculateScoreInline(product, method, customParams) {
 
     case 'value': {
       const { C, m } = cachedEnhancedParams;
+      // Currency-agnostic: use 25th percentile price as reference (favors cheap products)
+      const refPrice = cachedRefPrice || 100;
+      const refOffset = refPrice * 0.1;
+
       // Base quality: Enhanced Bayesian score
       const bayesian = ((reviews / (reviews + m)) * rating + (m / (reviews + m)) * C) || 0;
 
@@ -523,17 +558,24 @@ function calculateScoreInline(product, method, customParams) {
         confidenceFactor = 0.5 + (reviews / 10);
       }
 
-      const quality = bayesian * ratingMultiplier * confidenceFactor;
+      // Review volume bonus: reward products with many reviews (proven popularity)
+      const reviewBonus = reviews > 0
+        ? 1 + 0.3 * (Math.log10(reviews + 1) / Math.log10(cachedMaxReviews + 1))
+        : 1;
+
+      const quality = bayesian * ratingMultiplier * confidenceFactor * reviewBonus;
 
       // Value calculation - cheaper products get a boost
       if (price <= 0) {
         return Math.max(0, Math.min(5, quality)).toFixed(3);
       }
 
-      // Price bonus: (100 / (price + 10))^0.3
-      const priceBonus = Math.pow(100 / (price + 10), 0.3);
-      const valueScore = quality * priceBonus;
-      return Math.max(0, Math.min(5, valueScore)).toFixed(3);
+      // Price adjustment: return RAW score (will be normalized later in generatePreview)
+      const priceRatio = refPrice / (price + refOffset);
+      const priceAdjustment = Math.log(priceRatio) * 0.8;
+      const valueScore = quality + priceAdjustment;
+      // Don't cap here - normalization happens in generatePreview
+      return valueScore.toFixed(3);
     }
 
     case 'premium': {
