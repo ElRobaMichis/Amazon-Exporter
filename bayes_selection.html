@@ -1344,6 +1344,155 @@
         min-width: 200px;
       }
     }
+
+    /* ==================== FILTER & PAGINATION ==================== */
+
+    /* Filter Section */
+    .filter-section {
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .filter-input-wrapper {
+      position: relative;
+    }
+
+    .filter-input-wrapper input {
+      width: 100%;
+      padding: 10px 36px 10px 12px;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      background: var(--bg-card);
+      transition: all 0.2s ease;
+    }
+
+    .filter-input-wrapper input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    .filter-input-wrapper input::placeholder {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .filter-input-wrapper .filter-icon {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-muted);
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    .filter-label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .filter-help {
+      display: none;
+      font-size: 11px;
+      color: var(--success);
+      margin-top: 6px;
+      font-weight: 500;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .filter-help.visible {
+      display: flex;
+    }
+
+    .filter-help.no-results {
+      color: var(--text-muted);
+    }
+
+    /* Pagination */
+    .pagination-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-light);
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pagination-info {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .pagination-info span {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .pagination-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn-pagination {
+      padding: 8px 14px;
+      background: var(--bg-primary);
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-pagination:hover {
+      border-color: var(--primary);
+      background: var(--primary-light);
+      color: var(--primary-dark);
+    }
+
+    .btn-pagination-link {
+      padding: 8px 14px;
+      background: transparent;
+      border: none;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 0.2s ease;
+    }
+
+    .btn-pagination-link:hover {
+      color: var(--primary);
+    }
+
+    /* Export count badge */
+    .export-count {
+      background: rgba(255, 255, 255, 0.25);
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-family: 'JetBrains Mono', monospace;
+      margin-left: 6px;
+    }
   </style>
   <title>Configurar Bayescore</title>
 </head>
@@ -1479,8 +1628,22 @@
             <div class="card-icon success">&#128065;</div>
             <div class="card-title">Vista Previa</div>
           </div>
-          <span class="preview-note">Top 10 por Bayescore</span>
+          <span class="preview-note" id="previewNote">Top 10 por Bayescore</span>
         </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+          <label class="filter-label" for="keywordFilter">Filtrar por palabras clave</label>
+          <div class="filter-input-wrapper">
+            <input type="text" id="keywordFilter" placeholder="ej: wireless bluetooth auriculares">
+            <span class="filter-icon">&#128269;</span>
+          </div>
+          <div class="filter-help" id="filterHelp">
+            <span>&#10003;</span>
+            <span id="filterHelpText"></span>
+          </div>
+        </div>
+
         <div class="preview-table-wrapper">
           <table class="preview-table">
             <thead>
@@ -1505,6 +1668,21 @@
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination Controls -->
+        <div class="pagination-controls" id="paginationControls">
+          <div class="pagination-info">
+            Mostrando <span id="showingCount">10</span> de <span id="totalFilteredCount">0</span> productos
+          </div>
+          <div class="pagination-buttons">
+            <button type="button" class="btn-pagination" id="showMore">
+              &#8595; Mostrar 10 mas
+            </button>
+            <button type="button" class="btn-pagination-link" id="showAll">
+              Mostrar todos
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Buttons -->
@@ -1513,7 +1691,7 @@
           &#10005; Cancelar
         </button>
         <button id="applyBayes">
-          &#128190; Aplicar y Exportar CSV
+          &#128190; Aplicar y Exportar CSV <span class="export-count" id="exportCount">0</span>
         </button>
       </div>
     </div>

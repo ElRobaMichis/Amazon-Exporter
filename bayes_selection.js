@@ -1,11 +1,17 @@
 // bayes_selection.js - Handles Bayesian score selection after multi-page extraction
-// VERSION: 3.1 - Fixed: inline function returns raw scores for normalization
-console.log('[BayesSelection] CODE VERSION 3.1 - Raw scores + normalization');
+// VERSION: 3.2 - Added: keyword filter, pagination, export count badge
+console.log('[BayesSelection] CODE VERSION 3.2 - Keyword filter + pagination');
 
 let extractedProducts = [];
 let productStats = {};
 let currentMethod = 'enhanced';
 let sampleProducts = [];
+
+// Filter and pagination state
+let keywordFilter = '';
+let filteredProducts = [];
+let displayLimit = 10;
+const PAGE_SIZE = 10;
 
 // Cached params for performance (calculated once, used many times)
 let cachedParams = null;
@@ -332,6 +338,40 @@ function setupEventListeners() {
     document.getElementById('customC').addEventListener('input', handleCustomInput);
     document.getElementById('customM').addEventListener('input', handleCustomInput);
 
+    // Keyword filter (debounced)
+    let filterDebounceTimer;
+    const keywordInput = document.getElementById('keywordFilter');
+    if (keywordInput) {
+      keywordInput.addEventListener('input', (e) => {
+        clearTimeout(filterDebounceTimer);
+        filterDebounceTimer = setTimeout(() => {
+          keywordFilter = e.target.value.toLowerCase().trim();
+          displayLimit = PAGE_SIZE; // Reset pagination when filter changes
+          applyFilters();
+          generatePreview();
+          updateFilterHelp();
+        }, 300);
+      });
+    }
+
+    // Pagination buttons
+    const showMoreBtn = document.getElementById('showMore');
+    const showAllBtn = document.getElementById('showAll');
+
+    if (showMoreBtn) {
+      showMoreBtn.addEventListener('click', () => {
+        displayLimit += PAGE_SIZE;
+        generatePreview();
+      });
+    }
+
+    if (showAllBtn) {
+      showAllBtn.addEventListener('click', () => {
+        displayLimit = Infinity;
+        generatePreview();
+      });
+    }
+
     // Apply button
     document.getElementById('applyBayes').addEventListener('click', () => {
       applyBayesianScore(currentMethod);
@@ -361,6 +401,64 @@ function updateMethodInfo(method) {
   }
 }
 
+// Filter products by keyword (AND logic for multiple words)
+function applyFilters() {
+  if (!keywordFilter) {
+    filteredProducts = [...extractedProducts];
+    return;
+  }
+
+  const keywords = keywordFilter.split(/\s+/).filter(k => k.length > 0);
+
+  filteredProducts = extractedProducts.filter(product => {
+    const title = (product.title || product.name || '').toLowerCase();
+    return keywords.every(keyword => title.includes(keyword));
+  });
+}
+
+// Update filter help text
+function updateFilterHelp() {
+  const helpEl = document.getElementById('filterHelp');
+  const helpText = document.getElementById('filterHelpText');
+
+  if (keywordFilter) {
+    helpEl.classList.add('visible');
+    if (filteredProducts.length === 0) {
+      helpEl.classList.add('no-results');
+      helpText.textContent = `Sin resultados para "${keywordFilter}"`;
+    } else {
+      helpEl.classList.remove('no-results');
+      helpText.textContent = `${filteredProducts.length} de ${extractedProducts.length} productos`;
+    }
+  } else {
+    helpEl.classList.remove('visible', 'no-results');
+  }
+}
+
+// Update export count badge
+function updateExportCount(count) {
+  const badge = document.getElementById('exportCount');
+  if (badge) {
+    badge.textContent = count.toLocaleString();
+  }
+}
+
+// Update pagination controls visibility
+function updatePaginationControls(showingCount, totalCount) {
+  const showMoreBtn = document.getElementById('showMore');
+  const showAllBtn = document.getElementById('showAll');
+  const showingEl = document.getElementById('showingCount');
+  const totalEl = document.getElementById('totalFilteredCount');
+
+  if (showingEl) showingEl.textContent = showingCount;
+  if (totalEl) totalEl.textContent = totalCount;
+
+  // Hide buttons if all products are shown
+  const allShown = showingCount >= totalCount;
+  if (showMoreBtn) showMoreBtn.style.display = allShown ? 'none' : '';
+  if (showAllBtn) showAllBtn.style.display = allShown ? 'none' : '';
+}
+
 function getScoreColor(score) {
   const numScore = parseFloat(score);
   if (numScore >= 4.5) return 'var(--score-excellent)';
@@ -374,13 +472,28 @@ function generatePreview() {
   const previewBody = document.getElementById('previewBody');
 
   try {
+    // Apply filters if not already done
+    if (filteredProducts.length === 0 && extractedProducts.length > 0) {
+      applyFilters();
+    }
+
     if (!extractedProducts.length) {
       previewBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">No hay productos</td></tr>';
+      updatePaginationControls(0, 0);
+      updateExportCount(0);
       return;
     }
 
     if (!cachedParams) {
       previewBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Calculando...</td></tr>';
+      return;
+    }
+
+    // Handle empty filter results
+    if (filteredProducts.length === 0 && keywordFilter) {
+      previewBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted);">No hay productos que coincidan con el filtro</td></tr>';
+      updatePaginationControls(0, 0);
+      updateExportCount(0);
       return;
     }
 
@@ -396,8 +509,8 @@ function generatePreview() {
     // Check if current method uses price (to highlight price column)
     const isPriceMethod = currentMethod === 'value' || currentMethod === 'premium';
 
-    // Calculate scores for ALL products to find the top 10
-    let allProductsWithScore = extractedProducts.map(product => {
+    // Calculate scores for filtered products
+    let allProductsWithScore = filteredProducts.map(product => {
       const score = calculateScoreInline(product, currentMethod, customParams);
       return {
         name: product.title || product.name || 'Sin nombre',
@@ -428,22 +541,33 @@ function generatePreview() {
     }
 
     // Count products without price for info message
-    const productsWithoutPrice = extractedProducts.filter(p => !(parseFloat(p.price) > 0)).length;
+    const productsWithoutPrice = filteredProducts.filter(p => !(parseFloat(p.price) > 0)).length;
 
-    // Sort by score descending and take top 10
+    // Sort by score descending
     allProductsWithScore.sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
-    const previewData = allProductsWithScore.slice(0, 10);
 
-    // Update preview note if products are hidden
-    const previewNote = document.querySelector('.preview-note');
+    // Apply pagination
+    const totalCount = allProductsWithScore.length;
+    const previewData = allProductsWithScore.slice(0, displayLimit);
+    const showingCount = previewData.length;
+
+    // Update pagination controls
+    updatePaginationControls(showingCount, totalCount);
+
+    // Update export count (total filtered, not just showing)
+    updateExportCount(totalCount);
+
+    // Update preview note
+    const previewNote = document.getElementById('previewNote');
     if (previewNote) {
+      let noteText = `Top ${showingCount} por Bayescore`;
       if (isPriceMethod && productsWithoutPrice > 0) {
-        previewNote.textContent = `Top 10 por Bayescore (${productsWithoutPrice} sin precio ocultos)`;
+        noteText += ` (${productsWithoutPrice} sin precio ocultos)`;
         previewNote.style.color = 'var(--primary-dark)';
       } else {
-        previewNote.textContent = 'Top 10 por Bayescore';
         previewNote.style.color = '';
       }
+      previewNote.textContent = noteText;
     }
 
     // Generate HTML
@@ -654,11 +778,18 @@ function applyBayesianScore(method) {
     // Check if this is a price-based method
     const isPriceMethod = method === 'value' || method === 'premium';
 
+    // Start with filtered products if keyword filter is active, otherwise use all
+    let productsToExport = keywordFilter ? [...filteredProducts] : [...extractedProducts];
+
+    if (keywordFilter) {
+      console.log(`[BayesSelection] Exporting ${productsToExport.length} filtered products (keyword: "${keywordFilter}")`);
+    }
+
     // Filter products for price-based methods
-    let productsToExport = extractedProducts;
     if (isPriceMethod) {
-      productsToExport = extractedProducts.filter(p => parseFloat(p.price) > 0);
-      const filtered = extractedProducts.length - productsToExport.length;
+      const beforeCount = productsToExport.length;
+      productsToExport = productsToExport.filter(p => parseFloat(p.price) > 0);
+      const filtered = beforeCount - productsToExport.length;
       if (filtered > 0) {
         console.log(`[BayesSelection] Filtered ${filtered} products without price`);
       }
